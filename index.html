@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Planet Fitness Guide</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0d0b1a; font-family: 'Segoe UI', system-ui, sans-serif; color: #e2e8f0; }
+  button { font-family: inherit; }
+  input, select { font-family: inherit; }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  .header { background: linear-gradient(135deg, #1a1033 0%, #0d0b1a 100%); border-bottom: 1px solid #2d2b45; padding: 20px 20px 0; }
+  .logo { background: #7c3aed; border-radius: 10px; padding: 8px 12px; font-size: 20px; }
+  .phase-btn { flex-shrink: 0; padding: 6px 14px; border-radius: 8px; border: none; cursor: pointer; font-size: 12px; font-weight: 600; background: #1e1b2e; color: #a78bfa; }
+  .phase-btn.active { background: #7c3aed; color: #fff; }
+  .tab-btn { flex: 1; padding: 10px 4px; background: transparent; border: none; cursor: pointer; color: #6b7280; font-weight: 500; font-size: 12px; border-bottom: 2px solid transparent; transition: all 0.15s; }
+  .tab-btn.active { color: #a78bfa; font-weight: 700; border-bottom: 2px solid #7c3aed; }
+  .content { max-width: 640px; margin: 0 auto; padding: 20px; }
+  input, select { background: #1e1b2e; color: #e2e8f0; border: 1px solid #3d3a5c; border-radius: 8px; padding: 8px 10px; font-size: 14px; }
+  .lbl { color: #a78bfa; font-size: 12px; display: block; margin-bottom: 4px; }
+  .field { width: 100%; }
+  .subtab { padding: 8px 18px; border-radius: 8px; border: none; cursor: pointer; font-weight: 600; font-size: 13px; background: #1e1b2e; color: #a78bfa; }
+  .subtab.active { background: #7c3aed; color: #fff; }
+  .primary { background: #7c3aed; color: #fff; border: none; border-radius: 10px; padding: 12px; font-size: 15px; font-weight: 700; cursor: pointer; width: 100%; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<script>
+// ── Data ─────────────────────────────────────────────────────────────────────
+const PHASES = [
+  { label: "Weeks 1–2", tag: "Foundation", desc: "Learn the machines, establish form, light weight, high reps. Build the habit first." },
+  { label: "Weeks 3–4", tag: "Build", desc: "Add a set to each exercise. Increase weight 5–10 lbs where form is solid." },
+  { label: "Weeks 5–6", tag: "Load", desc: "Introduce progressive overload. Track your weights and aim to beat last week every session." },
+  { label: "Weeks 7–8", tag: "Peak", desc: "Push to true working weight. Rest 90 sec between sets. Aim to finish strong each day." },
+];
+
+const WORKOUT_DAYS = [
+  {
+    day: "A", label: "Monday", theme: "Upper Body", icon: "💪",
+    exercises: [
+      { name: "Chest Press Machine", muscles: "Pectorals, front deltoids, triceps", sets: "3", reps: "10–12", rest: "60 sec",
+        cues: ["Adjust seat so handles align with mid-chest.","Plant feet flat on the floor, back against pad.","Grip handles with palms forward — don't flare wrists.","Push until arms are nearly straight, don't lock elbows.","Return slowly — 2 seconds back — to feel the stretch."],
+        tip: "Use the weight stack pin to set the same weight every time until you can do 12 reps with no struggle." },
+      { name: "Lat Pulldown", muscles: "Latissimus dorsi, biceps, rear deltoids", sets: "3", reps: "10–12", rest: "60 sec",
+        cues: ["Sit with thighs tucked under the pad — adjust if needed.","Grip bar slightly wider than shoulder-width, palms forward.","Lean back 10–15°, keep chest up.","Pull bar to upper chest, driving elbows down and back.","Let bar rise slowly — don't let the stack slam."],
+        tip: "Think 'elbows to your back pockets' — this fires the lats and keeps your biceps from dominating." },
+      { name: "Shoulder Press Machine", muscles: "Deltoids, triceps, upper traps", sets: "3", reps: "10–12", rest: "60 sec",
+        cues: ["Set seat so handles are at shoulder height.","Brace your core — don't arch your lower back.","Press straight up, stopping just short of elbow lock.","Lower handles to shoulder level — full range of motion.","Keep wrists neutral, not bent back."],
+        tip: "Shoulder machines vary — if you feel impingement (pinching), lower the weight and reduce range of motion until strength builds." },
+      { name: "Seated Cable Row", muscles: "Mid-back (rhomboids), lats, rear delts, biceps", sets: "3", reps: "10–12", rest: "60 sec",
+        cues: ["Sit tall, slight lean forward at start, chest up.","Grip the handle and brace your core before pulling.","Pull handle to your lower chest — elbows track close to your sides.","Squeeze your shoulder blades together at the end.","Extend arms slowly back — control the weight, don't let it yank you."],
+        tip: "Row is where most beginners over-use their biceps. Focus on squeezing the back first — the arms follow." },
+    ],
+  },
+  {
+    day: "B", label: "Wednesday", theme: "Lower Body", icon: "🦵",
+    exercises: [
+      { name: "Leg Press", muscles: "Quads, hamstrings, glutes", sets: "3", reps: "12–15", rest: "90 sec",
+        cues: ["Place feet hip-width, mid-platform — not too high or low.","Lower the platform until knees reach 90°.","Push through heels, not your toes.","Don't lock your knees at the top.","Keep lower back pressed into the pad throughout."],
+        tip: "Leg press allows more weight than most machines — don't go ego-heavy. If your lower back peels off the pad, reduce weight." },
+      { name: "Leg Curl Machine", muscles: "Hamstrings, calves", sets: "3", reps: "12–15", rest: "60 sec",
+        cues: ["Adjust so pad sits just above your heels.","Lie flat, hips pressed into the pad.","Curl heels toward your glutes in a slow, controlled arc.","Squeeze at the top for 1 second.","Lower slowly — 3 seconds down."],
+        tip: "Hamstrings are often the weakest link after 40. Start very light — these are injury-prone if rushed." },
+      { name: "Seated Leg Extension", muscles: "Quadriceps", sets: "3", reps: "12–15", rest: "60 sec",
+        cues: ["Adjust so the pad rests just above your ankles.","Sit tall, back against the pad.","Extend both legs until straight — squeeze quads at the top.","Lower slowly — don't let the weight drop.","Keep feet flexed throughout."],
+        tip: "If you have knee issues, reduce range of motion — extend to 80% rather than fully straight to reduce joint stress." },
+      { name: "Glute Kickback Cable", muscles: "Glutes, hamstrings", sets: "3", reps: "12 per leg", rest: "60 sec",
+        cues: ["Attach ankle cuff to low pulley, fasten to one ankle.","Stand facing the machine, grip the frame for balance.","Brace core — don't rotate your hips.","Kick working leg back and up until hip is extended.","Lower controlled — don't let your hip drop forward."],
+        tip: "Light weight, full squeeze at the top. This is a sculpting move, not a strength lift — don't go heavy." },
+      { name: "Calf Raise (Machine or Smith Bar)", muscles: "Gastrocnemius, soleus", sets: "3", reps: "15–20", rest: "45 sec",
+        cues: ["Place balls of feet on edge of platform.","Stand tall, hold something for balance.","Rise on tiptoes as high as possible.","Pause at the top for 1 second.","Lower heels below platform for a full stretch."],
+        tip: "Calves respond to high reps and slow tempo. Add a pause at the top and bottom of each rep." },
+    ],
+  },
+  {
+    day: "C", label: "Friday", theme: "Core & Full Body", icon: "🔥",
+    exercises: [
+      { name: "Assisted Pull-Up Machine", muscles: "Lats, biceps, core", sets: "3", reps: "8–10", rest: "60 sec",
+        cues: ["Set the counterweight — more weight = more assistance.","Grip bar slightly wider than shoulder-width.","Kneel or stand on the pad, arms fully extended to start.","Pull until chin clears the bar, elbows drive down.","Lower slowly — full extension at the bottom."],
+        tip: "Decrease the assist weight by 5–10 lbs every few weeks. The goal is eventually doing pull-ups unassisted." },
+      { name: "Cable Tricep Pushdown", muscles: "Triceps", sets: "3", reps: "12–15", rest: "45 sec",
+        cues: ["Set cable to high pulley, use rope or straight bar attachment.","Stand close, elbows tucked at your sides — they stay there.","Push attachment down until arms are fully extended.","Squeeze triceps hard at the bottom.","Let arms rise slowly to 90° — controlled."],
+        tip: "Keep your elbows pinned. If they flare out, you're using shoulders — drop the weight." },
+      { name: "Cable Bicep Curl", muscles: "Biceps, forearms", sets: "3", reps: "12–15", rest: "45 sec",
+        cues: ["Set cable to low pulley, attach straight or EZ bar.","Stand back slightly, elbows at sides.","Curl up to shoulder height — don't swing your body.","Squeeze at the top, pause 1 second.","Lower slowly — 3 seconds down."],
+        tip: "Cable keeps constant tension through the whole rep — far more effective than dumbbells for beginners building the mind-muscle connection." },
+      { name: "Ab Crunch Machine", muscles: "Rectus abdominis, obliques", sets: "3", reps: "15–20", rest: "45 sec",
+        cues: ["Adjust seat so chest pad hits mid-chest.","Cross arms over chest or hold handles lightly.","Exhale as you crunch forward — drive with your abs, not your neck.","Pause at the bottom for 1 second.","Return slowly — feel the stretch in your core."],
+        tip: "This is not a neck exercise. If your neck strains, you're pulling with it. Think about 'curling your ribs toward your hips.'" },
+      { name: "Hip Abductor Machine", muscles: "Glute medius, outer hips, TFL", sets: "3", reps: "15–20", rest: "45 sec",
+        cues: ["Sit upright, knees outside the pads.","Push pads outward against resistance.","Pause at widest point — feel the outer glute.","Return slowly — don't let pads slam together.","Keep hips square, don't lean to one side."],
+        tip: "Strong hip abductors protect your knees and lower back — especially critical for men over 40 who sit most of the day." },
+      { name: "Floor Plank", muscles: "Full core, shoulders, glutes", sets: "3", reps: "30–60 sec hold", rest: "45 sec",
+        cues: ["Forearms on floor, elbows under shoulders.","Body forms a straight line — no sagging hips, no raised butt.","Squeeze glutes and brace abs as if bracing for a punch.","Keep breathing — don't hold your breath.","Eyes down, neck neutral."],
+        tip: "Start with 20 seconds and build. Quality beats duration — a shaky 60-second plank is worse than a rock-solid 30." },
+    ],
+  },
+];
+
+const PROGRESSION = [
+  { phase: "Weeks 1–2", tag: "Foundation", color: "#7c3aed", focus: "Form first. Every rep, every machine.",
+    details: [{label:"Sets",value:"2 per exercise"},{label:"Reps",value:"12–15 (light weight)"},{label:"Rest",value:"90 sec between sets"},{label:"Weight",value:"60–65% of what you think your max is"},{label:"Goal",value:"Leave every set feeling like you had 3+ reps left"}],
+    note: "Your joints and connective tissue take longer to adapt than your muscles. Rushing this phase causes injuries." },
+  { phase: "Weeks 3–4", tag: "Build", color: "#6d28d9", focus: "Add volume. One more set where you're confident.",
+    details: [{label:"Sets",value:"3 per exercise"},{label:"Reps",value:"10–12"},{label:"Rest",value:"75 sec between sets"},{label:"Weight",value:"Increase 5–10 lbs where form held"},{label:"Goal",value:"The last 2 reps should be hard — not impossible"}],
+    note: "If you can do 12 clean reps on all 3 sets, add weight next session. If you can't finish 10, drop weight." },
+  { phase: "Weeks 5–6", tag: "Load", color: "#5b21b6", focus: "Progressive overload. Track your numbers every session.",
+    details: [{label:"Sets",value:"3 per exercise"},{label:"Reps",value:"8–10 (heavier)"},{label:"Rest",value:"60 sec (shorter = harder = more growth)"},{label:"Weight",value:"Add 5 lbs or 1 rep per week — log it"},{label:"Goal",value:"Beat last week on at least one exercise per session"}],
+    note: "Keep a phone note or notebook. 'I'll remember' is the most expensive lie in the gym." },
+  { phase: "Weeks 7–8", tag: "Peak", color: "#4c1d95", focus: "Push your limits. Find your working weight.",
+    details: [{label:"Sets",value:"4 per main exercise, 3 for accessories"},{label:"Reps",value:"8–10, last set push to near-failure"},{label:"Rest",value:"60–90 sec"},{label:"Weight",value:"Highest yet — controlled, full range"},{label:"Goal",value:"Leave the gym feeling challenged, not destroyed"}],
+    note: "After Week 8, take 1 deload week (half the weight, full reps) before starting the next cycle heavier." },
+];
+
+const TIPS = [
+  { icon: "💧", title: "Hydrate Before You're Thirsty", body: "Drink 16 oz of water in the hour before your workout. Dehydration reduces strength by up to 15% — you'll feel it before you realize why." },
+  { icon: "📓", title: "Log Every Session", body: "Write down weight, sets, and reps for every exercise. Progress is invisible without data. Even a phone note works. The habit of tracking is the habit of improving." },
+  { icon: "🥩", title: "Protein is Non-Negotiable", body: "Aim for 0.7–1g of protein per pound of bodyweight daily. At 45, muscle protein synthesis is slower — you need more protein than you did at 25. Eggs, chicken, Greek yogurt, protein shakes." },
+  { icon: "😴", title: "Rest Days Are Training Days", body: "Muscles grow on Tuesday, Thursday, Saturday — not in the gym. Sleep 7–9 hours. Two consecutive poor nights of sleep will measurably reduce strength and recovery." },
+  { icon: "🪞", title: "Use the Mirror for Form, Not Ego", body: "Watch your form in the mirror, not how you look. Is your back straight? Are your knees tracking over your toes? The mirror is a diagnostic tool." },
+  { icon: "🔥", title: "Warm Up — It's Not Optional", body: "5 minutes of brisk walking or light cardio before lifting. Cold muscles tear. At 45, your warm-up is your injury prevention plan." },
+  { icon: "📈", title: "Don't Chase Soreness", body: "DOMS (delayed onset muscle soreness) doesn't mean a good workout. You can make excellent gains with zero soreness. Chase progress in the log, not pain in your body." },
+  { icon: "⏱️", title: "Stick to 45 Minutes", body: "After 45–60 minutes, testosterone drops and cortisol rises. Shorter, focused workouts beat long, distracted ones. Get in, work hard, get out." },
+];
+
+const EXERCISE_NAMES = [];
+WORKOUT_DAYS.forEach(d => d.exercises.forEach(e => EXERCISE_NAMES.push({ name: e.name, day: d.day })));
+
+// ── State ────────────────────────────────────────────────────────────────────
+const state = {
+  tab: "workout",
+  phase: 0,
+  openDay: null,
+  openEx: {},
+  // tracker
+  trackerView: "log",
+  log: [],
+  form: {
+    date: new Date().toISOString().slice(0, 10),
+    day: "A",
+    exercise: EXERCISE_NAMES[0].name,
+    sets: [{ reps: "", weight: "" }],
+    notes: "",
+  },
+};
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+const TABS = [
+  { id: "workout", label: "Workout Plan" },
+  { id: "progression", label: "Progression" },
+  { id: "tracker", label: "Tracker" },
+  { id: "tips", label: "Tips" },
+];
+
+function render() {
+  const cp = PHASES[state.phase];
+  const app = document.getElementById("app");
+  app.innerHTML = `
+    <div class="header">
+      <div class="wrap">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:4px;">
+          <div class="logo">🏋️</div>
+          <div>
+            <div style="font-weight:800;font-size:20px;letter-spacing:-0.3px;">Planet Fitness Guide</div>
+            <div style="color:#a78bfa;font-size:13px;">3 days/week · 45 minutes · Full body split</div>
+          </div>
+        </div>
+        <div style="margin-top:16px;">
+          <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:2px;">
+            ${PHASES.map((p,i)=>`<button class="phase-btn ${state.phase===i?'active':''}" data-phase="${i}">${esc(p.label)}</button>`).join("")}
+          </div>
+          <div style="background:#1e1b2e;border-radius:0 0 10px 10px;padding:10px 14px;margin-bottom:16px;font-size:13px;color:#c4b5fd;">
+            <span style="background:#7c3aed;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700;margin-right:8px;color:#fff;">${esc(cp.tag)}</span>${esc(cp.desc)}
+          </div>
+        </div>
+        <div style="display:flex;border-bottom:1px solid #2d2b45;">
+          ${TABS.map(t=>`<button class="tab-btn ${state.tab===t.id?'active':''}" data-tab="${t.id}">${esc(t.label)}</button>`).join("")}
+        </div>
+      </div>
+    </div>
+    <div class="content">${renderTab()}</div>
+  `;
+  bind();
+}
+
+function renderTab() {
+  if (state.tab === "workout") return renderWorkout();
+  if (state.tab === "progression") return renderProgression();
+  if (state.tab === "tracker") return renderTracker();
+  if (state.tab === "tips") return renderTips();
+  return "";
+}
+
+function renderWorkout() {
+  return WORKOUT_DAYS.map(d => {
+    const open = state.openDay === d.day;
+    let inner = "";
+    if (open) {
+      inner = `<div style="border:1px solid #7c3aed;border-top:none;border-radius:0 0 12px 12px;overflow:hidden;">` +
+        d.exercises.map((ex,ei) => {
+          const key = `${d.day}-${ei}`;
+          const exOpen = state.openEx[key];
+          let exInner = "";
+          if (exOpen) {
+            exInner = `<div style="background:#0f0d1c;padding:0 18px 16px;">
+              <div style="background:#1e1b2e;border-radius:8px;padding:10px 14px;margin-bottom:12px;">
+                <div style="color:#a78bfa;font-size:11px;font-weight:700;margin-bottom:2px;text-transform:uppercase;letter-spacing:0.5px;">Muscles</div>
+                <div style="color:#e2e8f0;font-size:14px;">${esc(ex.muscles)}</div>
+              </div>
+              <div style="margin-bottom:12px;">
+                <div style="color:#a78bfa;font-size:11px;font-weight:700;margin-bottom:8px;text-transform:uppercase;letter-spacing:0.5px;">Form Cues</div>
+                ${ex.cues.map((c,ci)=>`<div style="display:flex;gap:10px;margin-bottom:7px;">
+                  <span style="background:#7c3aed;color:#fff;border-radius:50%;width:20px;height:20px;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;flex-shrink:0;margin-top:1px;">${ci+1}</span>
+                  <span style="color:#d1d5db;font-size:14px;line-height:1.5;">${esc(c)}</span></div>`).join("")}
+              </div>
+              <div style="background:#1a1033;border:1px solid #4c1d95;border-radius:8px;padding:10px 14px;">
+                <div style="color:#c4b5fd;font-size:11px;font-weight:700;margin-bottom:4px;text-transform:uppercase;letter-spacing:0.5px;">⚡ Pro Tip</div>
+                <div style="color:#e2e8f0;font-size:14px;line-height:1.5;">${esc(ex.tip)}</div>
+              </div></div>`;
+          }
+          return `<div style="border-top:${ei>0?'1px solid #2d2b45':'none'};">
+            <button class="ex-toggle" data-key="${key}" style="width:100%;background:${exOpen?'#1a1733':'#13111f'};border:none;padding:14px 18px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;">
+              <div style="text-align:left;">
+                <div style="font-weight:600;font-size:15px;color:#e2e8f0;">${esc(ex.name)}</div>
+                <div style="color:#6b7280;font-size:12px;margin-top:2px;">${esc(ex.sets)} sets · ${esc(ex.reps)} reps · ${esc(ex.rest)} rest</div>
+              </div>
+              <span style="color:#7c3aed;font-size:18px;flex-shrink:0;">${exOpen?'▲':'▼'}</span>
+            </button>${exInner}</div>`;
+        }).join("") + `</div>`;
+    }
+    return `<div style="margin-bottom:12px;">
+      <button class="day-toggle" data-day="${d.day}" style="width:100%;background:${open?'#1e1b2e':'#13111f'};border:1px solid ${open?'#7c3aed':'#2d2b45'};border-radius:${open?'12px 12px 0 0':'12px'};padding:16px 18px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
+        <div style="display:flex;align-items:center;gap:12px;">
+          <span style="font-size:24px;">${d.icon}</span>
+          <div style="text-align:left;">
+            <div style="font-weight:700;font-size:16px;color:#e2e8f0;">Day ${d.day} — ${esc(d.label)}</div>
+            <div style="color:#a78bfa;font-size:13px;">${esc(d.theme)} · ${d.exercises.length} exercises</div>
+          </div>
+        </div>
+        <span style="color:#7c3aed;font-size:20px;font-weight:300;">${open?'−':'+'}</span>
+      </button>${inner}</div>`;
+  }).join("");
+}
+
+function renderProgression() {
+  const prog = PROGRESSION[state.phase];
+  return `<div>
+    <div style="margin-bottom:16px;color:#6b7280;font-size:14px;">Select a week range above to see your targets. The goal is simple: do more than you did last week.</div>
+    <div style="background:#13111f;border-radius:14px;border:1px solid #2d2b45;overflow:hidden;">
+      <div style="background:${prog.color};padding:16px 20px;">
+        <div style="font-weight:800;font-size:20px;">${esc(prog.phase)}</div>
+        <div style="color:#c4b5fd;font-size:14px;margin-top:2px;">${esc(prog.focus)}</div>
+      </div>
+      <div style="padding:20px;">
+        ${prog.details.map((d,i)=>`<div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:${i<prog.details.length-1?'1px solid #2d2b45':'none'};">
+          <span style="color:#a78bfa;font-size:14px;font-weight:600;">${esc(d.label)}</span>
+          <span style="color:#e2e8f0;font-size:14px;text-align:right;max-width:60%;">${esc(d.value)}</span></div>`).join("")}
+      </div>
+      <div style="background:#1a1033;border-top:1px solid #2d2b45;padding:12px 20px;">
+        <span style="color:#c4b5fd;font-size:13px;line-height:1.5;">📌 ${esc(prog.note)}</span>
+      </div>
+    </div>
+    <div style="margin-top:24px;">
+      <div style="color:#a78bfa;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;">8-Week Roadmap</div>
+      ${PROGRESSION.map((p,i)=>`<div class="road" data-phase="${i}" style="display:flex;align-items:center;gap:14px;padding:12px 16px;background:${state.phase===i?'#1e1b2e':'transparent'};border-radius:10px;cursor:pointer;margin-bottom:4px;border:1px solid ${state.phase===i?'#7c3aed':'transparent'};">
+        <div style="width:12px;height:12px;border-radius:50%;background:${p.color};flex-shrink:0;"></div>
+        <div>
+          <div style="font-weight:700;font-size:14px;color:#e2e8f0;">${esc(p.phase)} <span style="color:#7c3aed;">— ${esc(p.tag)}</span></div>
+          <div style="color:#6b7280;font-size:13px;">${esc(p.focus)}</div>
+        </div></div>`).join("")}
+    </div>
+  </div>`;
+}
+
+function renderTips() {
+  return `<div>
+    <div style="color:#6b7280;font-size:14px;margin-bottom:16px;">The training plan gets you in the gym. These habits are what make it stick.</div>
+    ${TIPS.map(t=>`<div style="background:#13111f;border-radius:12px;padding:16px 18px;margin-bottom:12px;border:1px solid #2d2b45;display:flex;gap:14px;">
+      <span style="font-size:26px;flex-shrink:0;">${t.icon}</span>
+      <div>
+        <div style="font-weight:700;font-size:15px;color:#e2e8f0;margin-bottom:4px;">${esc(t.title)}</div>
+        <div style="color:#9ca3af;font-size:14px;line-height:1.6;">${esc(t.body)}</div>
+      </div></div>`).join("")}
+  </div>`;
+}
+
+function getFeedback() {
+  if (state.log.length === 0) return null;
+  const recent = state.log.slice(0, 10);
+  const byExercise = {};
+  recent.forEach(entry => { (byExercise[entry.exercise] = byExercise[entry.exercise] || []).push(entry); });
+  const insights = [];
+  Object.entries(byExercise).forEach(([name, entries]) => {
+    if (entries.length < 2) return;
+    const last = entries[0], prev = entries[1];
+    const lw = last.sets.reduce((a,s)=>a+(parseFloat(s.weight)||0),0)/last.sets.length;
+    const pw = prev.sets.reduce((a,s)=>a+(parseFloat(s.weight)||0),0)/prev.sets.length;
+    const lr = last.sets.reduce((a,s)=>a+(parseInt(s.reps)||0),0)/last.sets.length;
+    const pr = prev.sets.reduce((a,s)=>a+(parseInt(s.reps)||0),0)/prev.sets.length;
+    if (lw > pw) insights.push({ type:"gain", text:`${name}: Weight increased (+${(lw-pw).toFixed(0)} lbs). Progress!` });
+    else if (lw < pw) insights.push({ type:"warn", text:`${name}: Weight dropped. This is fine if you were fixing form — otherwise check recovery.` });
+    else if (lr > pr) insights.push({ type:"gain", text:`${name}: Same weight, more reps. Ready to increase weight next session.` });
+    else insights.push({ type:"info", text:`${name}: Holding steady. Aim to add a rep or 5 lbs next time.` });
+  });
+  const totalSessions = state.log.length;
+  const consistency = totalSessions >= 3 ? "strong" : totalSessions >= 1 ? "building" : "just getting started";
+  return { insights, totalSessions, consistency };
+}
+
+function renderTracker() {
+  const f = state.form;
+  const avail = EXERCISE_NAMES.filter(e => e.day === f.day);
+  const subtabs = `<div style="display:flex;gap:8px;margin-bottom:20px;">
+    ${["log","history","feedback"].map(v=>`<button class="subtab ${state.trackerView===v?'active':''}" data-sub="${v}">${v==='log'?'Log a Set':v==='history'?'History':'Analysis'}</button>`).join("")}
+  </div>`;
+
+  let body = "";
+  if (state.trackerView === "log") {
+    body = `<div style="background:#13111f;border-radius:14px;padding:20px;border:1px solid #2d2b45;">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px;">
+        <div><label class="lbl">Date</label><input class="field" type="date" id="f-date" value="${esc(f.date)}"></div>
+        <div><label class="lbl">Day</label>
+          <select class="field" id="f-day">
+            <option value="A" ${f.day==='A'?'selected':''}>Day A — Upper Body</option>
+            <option value="B" ${f.day==='B'?'selected':''}>Day B — Lower Body</option>
+            <option value="C" ${f.day==='C'?'selected':''}>Day C — Core & Full Body</option>
+          </select></div>
+      </div>
+      <div style="margin-bottom:14px;"><label class="lbl">Exercise</label>
+        <select class="field" id="f-ex">${avail.map(e=>`<option value="${esc(e.name)}" ${f.exercise===e.name?'selected':''}>${esc(e.name)}</option>`).join("")}</select>
+      </div>
+      <div style="margin-bottom:14px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+          <label class="lbl" style="margin:0;">Sets</label>
+          <button id="add-set" style="background:#7c3aed;color:#fff;border:none;border-radius:6px;padding:4px 12px;font-size:12px;cursor:pointer;">+ Add Set</button>
+        </div>
+        ${f.sets.map((s,i)=>`<div style="display:flex;gap:8px;margin-bottom:8px;align-items:center;">
+          <span style="color:#6b7280;font-size:13px;width:50px;">Set ${i+1}</span>
+          <input class="set-reps" data-i="${i}" placeholder="Reps" value="${esc(s.reps)}" style="flex:1;">
+          <input class="set-weight" data-i="${i}" placeholder="Weight (lbs)" value="${esc(s.weight)}" style="flex:1;">
+          ${f.sets.length>1?`<button class="rm-set" data-i="${i}" style="background:transparent;color:#6b7280;border:none;cursor:pointer;font-size:16px;padding:0 4px;">✕</button>`:''}
+        </div>`).join("")}
+      </div>
+      <div style="margin-bottom:16px;"><label class="lbl">Notes (optional)</label>
+        <input class="field" id="f-notes" placeholder="e.g. felt strong, form clicked today" value="${esc(f.notes)}"></div>
+      <button class="primary" id="save-entry">Save Entry</button>
+    </div>`;
+  } else if (state.trackerView === "history") {
+    if (state.log.length === 0) {
+      body = `<div style="text-align:center;color:#6b7280;padding:40px;">No sessions logged yet. Log your first workout to start tracking progress.</div>`;
+    } else {
+      body = state.log.map(entry => `<div style="background:#13111f;border-radius:12px;padding:16px;margin-bottom:12px;border:1px solid #2d2b45;">
+        <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+          <span style="color:#e2e8f0;font-weight:700;">${esc(entry.exercise)}</span>
+          <span style="color:#6b7280;font-size:13px;">${esc(entry.date)}</span>
+        </div>
+        <div style="color:#a78bfa;font-size:12px;margin-bottom:8px;">Day ${esc(entry.day)}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          ${entry.sets.map(s=>`<div style="background:#1e1b2e;border-radius:6px;padding:4px 10px;font-size:13px;color:#c4b5fd;">${esc(s.reps)} reps ${s.weight?`@ ${esc(s.weight)} lbs`:''}</div>`).join("")}
+        </div>
+        ${entry.notes?`<div style="color:#6b7280;font-size:13px;margin-top:8px;font-style:italic;">${esc(entry.notes)}</div>`:''}
+      </div>`).join("");
+    }
+  } else {
+    const fb = getFeedback();
+    if (!fb || fb.totalSessions === 0) {
+      body = `<div style="text-align:center;color:#6b7280;padding:40px;">Log at least 2 sessions of the same exercise to see analysis.</div>`;
+    } else {
+      body = `<div style="background:#13111f;border-radius:12px;padding:16px;margin-bottom:16px;border:1px solid #2d2b45;">
+        <div style="color:#a78bfa;font-size:12px;margin-bottom:4px;">Sessions Logged</div>
+        <div style="color:#e2e8f0;font-size:28px;font-weight:800;">${fb.totalSessions}</div>
+        <div style="color:#6b7280;font-size:13px;">Consistency: ${esc(fb.consistency)}</div>
+      </div>`;
+      if (fb.insights.length === 0) {
+        body += `<div style="color:#6b7280;padding:20px;text-align:center;">Log the same exercise twice to see progress trends.</div>`;
+      } else {
+        body += fb.insights.map(ins => `<div style="background:#13111f;border-left:4px solid ${ins.type==='gain'?'#10b981':ins.type==='warn'?'#f59e0b':'#7c3aed'};border-radius:0 12px 12px 0;padding:14px;margin-bottom:10px;">
+          <span style="font-size:16px;margin-right:8px;">${ins.type==='gain'?'📈':ins.type==='warn'?'⚠️':'ℹ️'}</span>
+          <span style="color:#e2e8f0;font-size:14px;">${esc(ins.text)}</span></div>`).join("");
+      }
+    }
+  }
+  return subtabs + body;
+}
+
+// ── Events ───────────────────────────────────────────────────────────────────
+function bind() {
+  document.querySelectorAll("[data-phase]").forEach(el => el.onclick = () => { state.phase = +el.dataset.phase; render(); });
+  document.querySelectorAll("[data-tab]").forEach(el => el.onclick = () => { state.tab = el.dataset.tab; render(); });
+  document.querySelectorAll(".day-toggle").forEach(el => el.onclick = () => {
+    const d = el.dataset.day;
+    state.openDay = state.openDay === d ? null : d;
+    state.openEx = {};
+    render();
+  });
+  document.querySelectorAll(".ex-toggle").forEach(el => el.onclick = () => {
+    const k = el.dataset.key;
+    state.openEx[k] = !state.openEx[k];
+    render();
+  });
+  document.querySelectorAll(".road").forEach(el => el.onclick = () => { state.phase = +el.dataset.phase; render(); });
+  document.querySelectorAll("[data-sub]").forEach(el => el.onclick = () => { state.trackerView = el.dataset.sub; render(); });
+
+  // Tracker form
+  const fDate = document.getElementById("f-date");
+  if (fDate) fDate.onchange = e => { state.form.date = e.target.value; };
+  const fDay = document.getElementById("f-day");
+  if (fDay) fDay.onchange = e => {
+    state.form.day = e.target.value;
+    const first = EXERCISE_NAMES.find(x => x.day === e.target.value);
+    state.form.exercise = first ? first.name : "";
+    render();
+  };
+  const fEx = document.getElementById("f-ex");
+  if (fEx) fEx.onchange = e => { state.form.exercise = e.target.value; };
+  const fNotes = document.getElementById("f-notes");
+  if (fNotes) fNotes.oninput = e => { state.form.notes = e.target.value; };
+  const addSet = document.getElementById("add-set");
+  if (addSet) addSet.onclick = () => { state.form.sets.push({ reps: "", weight: "" }); render(); };
+  document.querySelectorAll(".rm-set").forEach(el => el.onclick = () => {
+    state.form.sets.splice(+el.dataset.i, 1); render();
+  });
+  document.querySelectorAll(".set-reps").forEach(el => el.oninput = e => { state.form.sets[+el.dataset.i].reps = e.target.value; });
+  document.querySelectorAll(".set-weight").forEach(el => el.oninput = e => { state.form.sets[+el.dataset.i].weight = e.target.value; });
+  const save = document.getElementById("save-entry");
+  if (save) save.onclick = () => {
+    const f = state.form;
+    if (!f.exercise || f.sets.some(s => !s.reps)) return;
+    state.log.unshift({ ...f, sets: f.sets.map(s => ({ ...s })), id: Date.now() });
+    state.form.sets = [{ reps: "", weight: "" }];
+    state.form.notes = "";
+    state.trackerView = "history";
+    render();
+  };
+}
+
+render();
+</script>
+</body>
+</html>
