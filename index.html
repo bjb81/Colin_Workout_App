@@ -47,7 +47,7 @@
   });
 </script>
 
-<script type="text/babel" data-presets="env,react">
+<script type="text/babel" data-presets="react" data-plugins="transform-optional-catch-binding">
 const { useState } = React;
 
 // ─── STORAGE ──────────────────────────────────────────────────────────────────
@@ -1094,7 +1094,7 @@ function TrackerTab() {
 
   function handleDeleteEntry(id) { persistLog(log.filter(e => e.id !== id)); }
   function addSet() { setSets(prev => [...prev, { weight: "", reps: "12" }]); }
-  function removeSet(i) { setSets(prev => prev.filter((_, idx) => idx !== i)); }
+  function removeSet(i) { setSets(prev => prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev); }
   function updateSet(i, field, val) { setSets(prev => prev.map((s, idx) => idx === i ? { ...s, [field]: val } : s)); }
 
   function handleLogWeight() {
@@ -1400,7 +1400,7 @@ function TrackerTab() {
               </div>
             )}
             <div style={{ display: "flex", gap: "8px" }}>
-              <input type="number" inputMode="decimal" placeholder="Enter goal weight (lbs)" value={goalInput} onChange={e => setGoalInput(e.target.value)} style={{ ...smallInput, flex: 1 }} />
+              <input type="number" inputMode="decimal" placeholder="Enter goal weight (lbs)" value={goalInput} onChange={e => setGoalInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSaveGoal()} style={{ ...smallInput, flex: 1 }} />
               <button onClick={handleSaveGoal} style={{ padding: "9px 16px", borderRadius: "8px", border: "none", background: goalSaved ? "linear-gradient(135deg, #166534, #15803d)" : "linear-gradient(135deg, #1d4ed8, #3b82f6)", color: "#fff", fontFamily: "'Inter', sans-serif", fontWeight: "700", fontSize: "13px", cursor: "pointer", whiteSpace: "nowrap" }}>
                 {goalSaved ? "✓ Saved" : "Set Goal"}
               </button>
@@ -1410,7 +1410,7 @@ function TrackerTab() {
           <div style={{ marginBottom: "20px" }}>
             <div style={{ color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "10px" }}>Log Today's Weight</div>
             <div style={{ display: "flex", gap: "8px" }}>
-              <input type="number" inputMode="decimal" placeholder="e.g. 165" value={bwInput} onChange={e => setBwInput(e.target.value)} style={{ ...smallInput, flex: 1 }} />
+              <input type="number" inputMode="decimal" placeholder="e.g. 165" value={bwInput} onChange={e => setBwInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogWeight()} style={{ ...smallInput, flex: 1 }} />
               <button onClick={handleLogWeight} style={{ padding: "9px 16px", borderRadius: "8px", border: "none", background: "linear-gradient(135deg, #1d4ed8, #3b82f6)", color: "#fff", fontFamily: "'Inter', sans-serif", fontWeight: "700", fontSize: "13px", cursor: "pointer" }}>Log</button>
             </div>
             <div style={{ color: "#4a5a6a", fontSize: "11px", marginTop: "6px" }}>Date: {todayStr()}</div>
@@ -1471,7 +1471,7 @@ function TrackerTab() {
           <div style={{ background: "#0f1923", border: "1px solid #1e2a3a", borderRadius: "14px", padding: "18px", marginBottom: "20px" }}>
             <div style={{ color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "14px" }}>+ Log Food</div>
             <div style={{ marginBottom: "10px" }}>
-              <input type="text" placeholder="Food name (e.g. Grilled Chicken)" value={foodName} onChange={e => setFoodName(e.target.value)} style={smallInput} />
+              <input type="text" placeholder="Food name (e.g. Grilled Chicken)" value={foodName} onChange={e => setFoodName(e.target.value)} onKeyDown={e => e.key === "Enter" && handleAddFood()} style={smallInput} />
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", marginBottom: "14px" }}>
               <div>
