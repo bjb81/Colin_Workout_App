@@ -20,703 +20,709 @@
 <link rel="manifest" href="data:application/manifest+json,%7B%22name%22%3A%22Your%20Gym%20Guide%22%2C%22short_name%22%3A%22Gym%20Guide%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%23060d14%22%2C%22theme_color%22%3A%22%23060d14%22%7D" />
 
 <style>
-  * { -webkit-tap-highlight-color: transparent; }
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; background: #060d14; overscroll-behavior: none; }
   body { -webkit-touch-callout: none; }
-  input, select, textarea, button { -webkit-user-select: text; }
-  #root { min-height: 100vh; }
+  input, select, textarea, button { font: inherit; }
+  button { -webkit-user-select: none; user-select: none; }
+  input, select, textarea { -webkit-user-select: text; user-select: text; }
+  #root { min-height: 100vh; min-height: 100dvh; }
   /* Prevent iOS rubber-band white flash */
   html { background: #060d14; }
+  .app-load-error { color:#f87171; font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; padding:20px; white-space:pre-wrap; line-height:1.5; }
 </style>
 
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://unpkg.com/@babel/standalone@7.23.10/babel.min.js"></script>
 </head>
 <body>
+<noscript><div class="app-load-error">This app requires JavaScript to run.</div></noscript>
 <div id="root">
   <div style="color:#6b7a8d; font-family:sans-serif; padding:40px 20px; text-align:center;">Loading your gym guide…</div>
 </div>
 
 <script>
-  window.addEventListener('error', function(e) {
-    var root = document.getElementById('root');
-    if (root) {
-      root.innerHTML = '<div style="color:#f87171; font-family:monospace; padding:20px; white-space:pre-wrap;">App failed to load:\n' + (e.message || e) + '</div>';
+  (function () {
+    function escapeHtml(value) {
+      return String(value || "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
     }
-  });
+    window.addEventListener("error", function (e) {
+      var root = document.getElementById("root");
+      if (!root) return;
+      var details = e.message || "Unknown error";
+      if (e.filename) details += "\n" + e.filename + ":" + (e.lineno || 0) + ":" + (e.colno || 0);
+      root.innerHTML = '<div class="app-load-error">App failed to load:\n' + escapeHtml(details) + '</div>';
+    });
+    window.addEventListener("unhandledrejection", function (e) {
+      var root = document.getElementById("root");
+      if (!root) return;
+      var reason = e.reason && (e.reason.stack || e.reason.message) ? (e.reason.stack || e.reason.message) : e.reason;
+      root.innerHTML = '<div class="app-load-error">App failed to load:\n' + escapeHtml(reason || "Unhandled promise rejection") + '</div>';
+    });
+  })();
 </script>
 
-<script type="text/babel" data-presets="react" data-type="script">
+<script>
 const { useState } = React;
-
 // ─── STORAGE ──────────────────────────────────────────────────────────────────
 const WORKOUT_LOG_KEY = "gymguide:workoutlog";
-const DRAFT_KEY        = "gymguide:draft";
-const BODYWEIGHT_KEY   = "gymguide:bodyweight";
-const GOAL_WEIGHT_KEY  = "gymguide:goalweight";
-const NUTRITION_KEY     = "gymguide:nutrition";
-
+const DRAFT_KEY = "gymguide:draft";
+const BODYWEIGHT_KEY = "gymguide:bodyweight";
+const GOAL_WEIGHT_KEY = "gymguide:goalweight";
+const NUTRITION_KEY = "gymguide:nutrition";
 function ls_get(key, fallback) {
-  try {
-    const v = localStorage.getItem(key);
-    return v ? JSON.parse(v) : fallback;
-  } catch (e) {
-    return fallback;
-  }
+    try {
+        const v = localStorage.getItem(key);
+        return v ? JSON.parse(v) : fallback;
+    }
+    catch (e) {
+        return fallback;
+    }
 }
 function ls_set(key, val) {
-  try {
-    localStorage.setItem(key, JSON.stringify(val));
-  } catch (e) {}
+    try {
+        localStorage.setItem(key, JSON.stringify(val));
+    }
+    catch (e) { }
 }
-
 function todayStr() {
-  return new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    return new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
-
 // ─── DATA ────────────────────────────────────────────────────────────────────
-
 const phases = [
-  {
-    label: "Weeks 1–2",
-    tag: "Foundation",
-    color: "#3b82f6",
-    desc: "Learn the machines. Focus on form over everything. Light weight, full range of motion.",
-    sets: "3 sets",
-    reps: "12–15 reps",
-    rest: "90 sec rest",
-    intensity: "60–65% effort",
-  },
-  {
-    label: "Weeks 3–4",
-    tag: "Build",
-    color: "#2563eb",
-    desc: "Add a set to each exercise. Bump weight slightly. Start tracking your lifts.",
-    sets: "4 sets",
-    reps: "10–12 reps",
-    rest: "75 sec rest",
-    intensity: "70–75% effort",
-  },
-  {
-    label: "Weeks 5–6",
-    tag: "Push",
-    color: "#1d4ed8",
-    desc: "Increase weight by 5–10 lbs where possible. Last set should feel hard.",
-    sets: "4 sets",
-    reps: "8–10 reps",
-    rest: "60 sec rest",
-    intensity: "75–80% effort",
-  },
-  {
-    label: "Weeks 7–8",
-    tag: "Peak",
-    color: "#1e40af",
-    desc: "Max intensity. Drop sets on your last exercise each day. You've earned it.",
-    sets: "4–5 sets",
-    reps: "6–10 reps (drop set last)",
-    rest: "60 sec rest",
-    intensity: "80–85% effort",
-  },
+    {
+        label: "Weeks 1–2",
+        tag: "Foundation",
+        color: "#3b82f6",
+        desc: "Learn the machines. Focus on form over everything. Light weight, full range of motion.",
+        sets: "3 sets",
+        reps: "12–15 reps",
+        rest: "90 sec rest",
+        intensity: "60–65% effort",
+    },
+    {
+        label: "Weeks 3–4",
+        tag: "Build",
+        color: "#2563eb",
+        desc: "Add a set to each exercise. Bump weight slightly. Start tracking your lifts.",
+        sets: "4 sets",
+        reps: "10–12 reps",
+        rest: "75 sec rest",
+        intensity: "70–75% effort",
+    },
+    {
+        label: "Weeks 5–6",
+        tag: "Push",
+        color: "#1d4ed8",
+        desc: "Increase weight by 5–10 lbs where possible. Last set should feel hard.",
+        sets: "4 sets",
+        reps: "8–10 reps",
+        rest: "60 sec rest",
+        intensity: "75–80% effort",
+    },
+    {
+        label: "Weeks 7–8",
+        tag: "Peak",
+        color: "#1e40af",
+        desc: "Max intensity. Drop sets on your last exercise each day. You've earned it.",
+        sets: "4–5 sets",
+        reps: "6–10 reps (drop set last)",
+        rest: "60 sec rest",
+        intensity: "80–85% effort",
+    },
 ];
-
 const workoutDays = [
-  {
-    day: "Leg Day",
-    label: "Leg Day",
-    icon: "🦵",
-    accentColor: "#3b82f6",
-    exercises: [
-      {
-        name: "Leg Press Machine",
-        machine: "Leg Press (Plate-Loaded or Selectorized)",
-        muscles: "Quads, Glutes, Hamstrings",
-        sets: "4 sets × 10–12 reps",
-        rest: "90 sec",
-        form: [
-          "Set the seat so your knees are at 90° when the platform is close.",
-          "Feet shoulder-width apart, toes pointed slightly outward.",
-          "Push through your heels — don't let your heels lift off.",
-          "Lower until your knees hit 90°, never let lower back peel off the pad.",
-          "Extend fully but don't lock out your knees at the top.",
+    {
+        day: "Leg Day",
+        label: "Leg Day",
+        icon: "🦵",
+        accentColor: "#3b82f6",
+        exercises: [
+            {
+                name: "Leg Press Machine",
+                machine: "Leg Press (Plate-Loaded or Selectorized)",
+                muscles: "Quads, Glutes, Hamstrings",
+                sets: "4 sets × 10–12 reps",
+                rest: "90 sec",
+                form: [
+                    "Set the seat so your knees are at 90° when the platform is close.",
+                    "Feet shoulder-width apart, toes pointed slightly outward.",
+                    "Push through your heels — don't let your heels lift off.",
+                    "Lower until your knees hit 90°, never let lower back peel off the pad.",
+                    "Extend fully but don't lock out your knees at the top.",
+                ],
+                tip: "Leg press is your strength anchor on leg day. Go heavier here than anywhere else — just keep your back flat the whole time.",
+            },
+            {
+                name: "Hack Squat Machine",
+                machine: "Smith Machine Hack Squat (feet forward on platform)",
+                muscles: "Quads, Glutes",
+                sets: "4 sets × 10–12 reps",
+                rest: "90 sec",
+                form: [
+                    "Position the bar on your upper traps, feet slightly in front of the bar.",
+                    "Feet shoulder-width, toes 15–30° outward.",
+                    "Sit back and down, keeping chest tall and core braced.",
+                    "Drive through the whole foot on the way up.",
+                    "Stop just before lockout to keep tension on the quads.",
+                ],
+                tip: "Smith machine hack squats are actually elite for quad development. The fixed bar path lets you focus entirely on the muscle, not balance.",
+            },
+            {
+                name: "Leg Extension",
+                machine: "Leg Extension Machine",
+                muscles: "Quadriceps (isolation)",
+                sets: "3 sets × 12–15 reps",
+                rest: "60 sec",
+                form: [
+                    "Adjust the pad so it sits just above your ankles.",
+                    "Sit tall — don't let your back round or your hips lift.",
+                    "Extend fully, squeezing hard at the top for 1 second.",
+                    "Lower slowly — take 2–3 seconds going down.",
+                    "Keep your toes slightly pulled back (dorsiflexed) for better quad activation.",
+                ],
+                tip: "You love these — use them as a finisher after compound work. That squeeze at the top is where the gains live.",
+            },
+            {
+                name: "Seated Leg Curl",
+                machine: "Seated Leg Curl Machine",
+                muscles: "Hamstrings (isolation)",
+                sets: "3 sets × 12–15 reps",
+                rest: "60 sec",
+                form: [
+                    "Adjust so the knee pad aligns with your actual knee joint.",
+                    "Sit upright with back flat against the pad.",
+                    "Curl as far as possible — get your heels toward your glutes.",
+                    "Hold the peak contraction for 1 second.",
+                    "Return slowly, resisting the weight — don't let it snap back.",
+                ],
+                tip: "Hamstrings are critical for athletic performance and injury prevention. Train them as seriously as your quads — most people don't.",
+            },
+            {
+                name: "Standing Calf Raise",
+                machine: "Calf Raise Machine or Smith Machine",
+                muscles: "Gastrocnemius, Soleus",
+                sets: "4 sets × 15–20 reps",
+                rest: "45 sec",
+                form: [
+                    "Stand with the balls of your feet on the platform, heels hanging.",
+                    "Keep legs straight (slight bend, not locked).",
+                    "Lower heels all the way down — full stretch at the bottom.",
+                    "Rise up as high as you can, hard squeeze at the top.",
+                    "Slow, controlled reps — no bouncing.",
+                ],
+                tip: "Calves respond to high reps. Go slow and feel every rep — most people rush these and get nothing from them.",
+            },
         ],
-        tip: "Leg press is your strength anchor on leg day. Go heavier here than anywhere else — just keep your back flat the whole time.",
-      },
-      {
-        name: "Hack Squat Machine",
-        machine: "Smith Machine Hack Squat (feet forward on platform)",
-        muscles: "Quads, Glutes",
-        sets: "4 sets × 10–12 reps",
-        rest: "90 sec",
-        form: [
-          "Position the bar on your upper traps, feet slightly in front of the bar.",
-          "Feet shoulder-width, toes 15–30° outward.",
-          "Sit back and down, keeping chest tall and core braced.",
-          "Drive through the whole foot on the way up.",
-          "Stop just before lockout to keep tension on the quads.",
+    },
+    {
+        day: "Chest & Back",
+        label: "Chest & Back",
+        icon: "💪",
+        accentColor: "#2563eb",
+        exercises: [
+            {
+                name: "Chest Press Machine",
+                machine: "Seated Chest Press (Hammer Strength or Cable)",
+                muscles: "Pecs, Front Deltoids, Triceps",
+                sets: "4 sets × 10–12 reps",
+                rest: "90 sec",
+                form: [
+                    "Adjust the seat so handles are at mid-chest height.",
+                    "Grip handles with wrists straight — not bent back.",
+                    "Retract your shoulder blades before each set and keep them back.",
+                    "Press to full extension without locking elbows.",
+                    "Control the return — 2 seconds back, feel the chest stretch.",
+                ],
+                tip: "Squeeze your chest as you press, not just your arms. Think about bringing your elbows together in front of you.",
+            },
+            {
+                name: "Pec Deck / Chest Fly",
+                machine: "Pec Deck Machine",
+                muscles: "Pecs (inner/outer), Front Deltoids",
+                sets: "3 sets × 12–15 reps",
+                rest: "60 sec",
+                form: [
+                    "Sit with your back flat, feet on the floor.",
+                    "Pads should sit on your forearms, not wrists.",
+                    "Bring the pads together in a wide arc — like hugging a tree.",
+                    "Hold the squeeze at the peak for 1 second.",
+                    "Open wide on the way back — but stop before your shoulders roll forward.",
+                ],
+                tip: "This is one of the best chest isolation moves at Planet Fitness. Go lighter than you think and feel every single rep.",
+            },
+            {
+                name: "Cable Row (Seated)",
+                machine: "Low Cable Row with V-bar",
+                muscles: "Lats, Rhomboids, Rear Delts, Biceps",
+                sets: "4 sets × 10–12 reps",
+                rest: "90 sec",
+                form: [
+                    "Sit tall with a slight forward lean — not hunched.",
+                    "Pull the handle into your lower stomach, elbows close to your body.",
+                    "Squeeze your shoulder blades together hard at the peak.",
+                    "Hold 1 second at the back.",
+                    "Extend arms fully on the return — let your lats stretch.",
+                ],
+                tip: "Back training is the secret weapon most guys skip. Pull with your elbows, not your hands — think of your hands as just hooks.",
+            },
+            {
+                name: "Lat Pulldown",
+                machine: "Cable Lat Pulldown",
+                muscles: "Lats, Teres Major, Biceps",
+                sets: "4 sets × 10–12 reps",
+                rest: "75 sec",
+                form: [
+                    "Grip just outside shoulder-width. Lean back slightly (10–15°).",
+                    "Pull the bar to your upper chest, driving elbows toward your hips.",
+                    "Keep your chest tall and up as the bar comes down.",
+                    "Squeeze at the bottom — feel your lats contract.",
+                    "Return with control — full arm extension at the top.",
+                ],
+                tip: "Lat pulldowns build that wide V-taper look. Every single rep — squeeze and stretch. No half reps.",
+            },
+            {
+                name: "Cable Chest Fly",
+                machine: "Cable Crossover (high pulley)",
+                muscles: "Pecs, Front Deltoids",
+                sets: "3 sets × 12–15 reps",
+                rest: "60 sec",
+                form: [
+                    "Stand in the center, cables set high.",
+                    "Slight forward lean, slight bend in the elbows (and keep it there).",
+                    "Bring hands together in front of your chest in a wide arc.",
+                    "Cross hands slightly at the peak for full contraction.",
+                    "Open arms slowly — feel the stretch, don't let it snap open.",
+                ],
+                tip: "End chest day with cables to really finish the muscle. You'll feel this the next day if you do it right.",
+            },
         ],
-        tip: "Smith machine hack squats are actually elite for quad development. The fixed bar path lets you focus entirely on the muscle, not balance.",
-      },
-      {
-        name: "Leg Extension",
-        machine: "Leg Extension Machine",
-        muscles: "Quadriceps (isolation)",
-        sets: "3 sets × 12–15 reps",
-        rest: "60 sec",
-        form: [
-          "Adjust the pad so it sits just above your ankles.",
-          "Sit tall — don't let your back round or your hips lift.",
-          "Extend fully, squeezing hard at the top for 1 second.",
-          "Lower slowly — take 2–3 seconds going down.",
-          "Keep your toes slightly pulled back (dorsiflexed) for better quad activation.",
+    },
+    {
+        day: "Biceps & Triceps",
+        label: "Biceps & Triceps",
+        icon: "🏋️",
+        accentColor: "#1d4ed8",
+        exercises: [
+            {
+                name: "Cable Curl",
+                machine: "Low Cable with EZ-bar or straight bar",
+                muscles: "Biceps Brachii, Brachialis",
+                sets: "4 sets × 10–12 reps",
+                rest: "60 sec",
+                form: [
+                    "Stand close to the cable tower, elbows pinned to your sides.",
+                    "Curl until your forearms are just past parallel.",
+                    "Squeeze hard at the top for 1 second.",
+                    "Lower slowly — 3-second negative.",
+                    "Don't swing your body — if you are, the weight is too heavy.",
+                ],
+                tip: "Cables keep constant tension on your biceps the whole rep — way better than dumbbells for growth. Use them every arm day.",
+            },
+            {
+                name: "Preacher Curl Machine",
+                machine: "Seated Preacher Curl or Cable Preacher",
+                muscles: "Biceps (lower/peak)",
+                sets: "3 sets × 10–12 reps",
+                rest: "60 sec",
+                form: [
+                    "Adjust so your armpits rest at the top of the pad.",
+                    "Grip the bar or handles shoulder-width.",
+                    "Curl up fully, squeezing at the top.",
+                    "Lower very slowly — this is where the growth happens.",
+                    "Don't let your arms go fully straight at the bottom — it strains the elbow.",
+                ],
+                tip: "The preacher curl removes all cheating. Your biceps do the entire job. Embrace the burn.",
+            },
+            {
+                name: "Hammer Curl (Cable Rope)",
+                machine: "Low Cable with rope attachment",
+                muscles: "Brachialis, Brachioradialis, Biceps",
+                sets: "3 sets × 12 reps",
+                rest: "60 sec",
+                form: [
+                    "Attach a rope to the low cable.",
+                    "Hold rope with neutral grip (palms facing each other).",
+                    "Curl rope up, keeping palms neutral the whole way.",
+                    "Squeeze at the top, lower with control.",
+                    "Keep elbows anchored — no swinging.",
+                ],
+                tip: "Hammer curls build the brachialis, which actually pushes your bicep peak up and makes your arms look bigger from every angle.",
+            },
+            {
+                name: "Tricep Pushdown",
+                machine: "High Cable with rope or straight bar",
+                muscles: "All three tricep heads",
+                sets: "4 sets × 12–15 reps",
+                rest: "60 sec",
+                form: [
+                    "Stand close to the cable, elbows pinned to your sides.",
+                    "Push the rope or bar down until arms are fully extended.",
+                    "At the bottom with a rope — spread the ends apart for peak contraction.",
+                    "Hold 1 second at the bottom.",
+                    "Return to 90° — don't let your elbows fly forward.",
+                ],
+                tip: "Triceps make up 2/3 of your upper arm. If you want bigger arms, train triceps as hard as biceps — most people get this backwards.",
+            },
+            {
+                name: "Overhead Tricep Extension",
+                machine: "High Cable with rope (facing away) or machine",
+                muscles: "Triceps Long Head",
+                sets: "3 sets × 12 reps",
+                rest: "60 sec",
+                form: [
+                    "Face away from the cable tower, rope overhead.",
+                    "Elbows point forward — keep them there.",
+                    "Extend arms fully overhead, squeezing hard.",
+                    "Lower slowly, feeling the stretch in your triceps.",
+                    "Keep core tight — don't arch your lower back.",
+                ],
+                tip: "The long head of the tricep only gets fully stretched when your arm is overhead. This move is essential for complete tricep development.",
+            },
+            {
+                name: "Tricep Dip Machine",
+                machine: "Assisted Dip Machine (Planet Fitness has these)",
+                muscles: "Triceps, Chest, Front Deltoids",
+                sets: "3 sets × 10–12 reps",
+                rest: "75 sec",
+                form: [
+                    "Set the assistance weight — less assistance = harder.",
+                    "Keep your torso upright for more tricep focus.",
+                    "Lower until arms hit 90°.",
+                    "Press up to full extension, squeezing triceps.",
+                    "Don't shrug your shoulders — keep them down.",
+                ],
+                tip: "Work toward doing these with zero assistance over the 8 weeks. That's your benchmark for arm day progress.",
+            },
         ],
-        tip: "You love these — use them as a finisher after compound work. That squeeze at the top is where the gains live.",
-      },
-      {
-        name: "Seated Leg Curl",
-        machine: "Seated Leg Curl Machine",
-        muscles: "Hamstrings (isolation)",
-        sets: "3 sets × 12–15 reps",
-        rest: "60 sec",
-        form: [
-          "Adjust so the knee pad aligns with your actual knee joint.",
-          "Sit upright with back flat against the pad.",
-          "Curl as far as possible — get your heels toward your glutes.",
-          "Hold the peak contraction for 1 second.",
-          "Return slowly, resisting the weight — don't let it snap back.",
+    },
+    {
+        day: "Forearms & Shoulders",
+        label: "Forearms & Shoulders",
+        icon: "🎯",
+        accentColor: "#1d4ed8",
+        exercises: [
+            {
+                name: "Shoulder Press Machine",
+                machine: "Seated Shoulder Press Machine",
+                muscles: "Front & Side Deltoids, Triceps",
+                sets: "4 sets × 10–12 reps",
+                rest: "90 sec",
+                form: [
+                    "Adjust the seat so handles are at shoulder height.",
+                    "Keep your back flat against the pad — don't arch.",
+                    "Press straight up, but don't lock out at the top.",
+                    "Lower slowly — 2–3 seconds down.",
+                    "Keep your neck relaxed — don't scrunch your traps.",
+                ],
+                tip: "Shoulder press is your strength builder here. This is the one machine to track weight progress on every week.",
+            },
+            {
+                name: "Cable Lateral Raise",
+                machine: "Single-arm low cable",
+                muscles: "Lateral Deltoids",
+                sets: "3 sets × 12–15 reps each side",
+                rest: "45 sec",
+                form: [
+                    "Stand side-on to the cable tower, cable on the far side.",
+                    "Slight bend in your elbow — lock that angle in.",
+                    "Raise your arm out to the side until it's parallel to the floor.",
+                    "Lead with your elbow, not your hand.",
+                    "Lower slowly — don't let the cable slam back.",
+                ],
+                tip: "Lateral raises give you the wide shoulder look. Every rep, imagine you're pouring water out of a pitcher at the top.",
+            },
+            {
+                name: "Cable Face Pull",
+                machine: "High Cable with rope attachment",
+                muscles: "Rear Deltoids, Rotator Cuff, Traps",
+                sets: "3 sets × 15 reps",
+                rest: "60 sec",
+                form: [
+                    "Set the cable at face height or slightly above.",
+                    "Pull the rope toward your face, splitting it apart at the end.",
+                    "Elbows flare out — keep them above shoulder height.",
+                    "Squeeze your rear delts and traps hard at the peak.",
+                    "Control the return.",
+                ],
+                tip: "Face pulls are shoulder health in one exercise. They balance all the pressing you do and keep your rotator cuff healthy for years.",
+            },
+            {
+                name: "Machine Rear Delt Fly",
+                machine: "Pec Deck Machine (reversed) or Rear Delt Machine",
+                muscles: "Rear Deltoids, Rhomboids",
+                sets: "3 sets × 12–15 reps",
+                rest: "60 sec",
+                form: [
+                    "Sit facing the machine pad, adjusting arms to shoulder height.",
+                    "Grip the handles and open your arms wide like wings.",
+                    "Keep a slight bend in your elbows throughout.",
+                    "Squeeze the rear delts hard at peak — pause 1 second.",
+                    "Don't let your hands go past 180° — slow return.",
+                ],
+                tip: "Most people only train the front of their shoulders. Rear delts give your shoulders that full, 3D look — and protect your joints.",
+            },
+            {
+                name: "Wrist Curl (Cable)",
+                machine: "Low cable with straight bar",
+                muscles: "Forearm Flexors",
+                sets: "3 sets × 15–20 reps",
+                rest: "45 sec",
+                form: [
+                    "Sit at a bench, forearms resting on your thighs, palms up.",
+                    "Hold the bar and let it roll to your fingertips at the bottom.",
+                    "Curl your wrists up as far as possible.",
+                    "Squeeze at the top and lower slowly.",
+                    "Keep your forearms still — only your wrists move.",
+                ],
+                tip: "Strong forearms mean a stronger grip on every other exercise. They're the foundation you don't see but feel everywhere.",
+            },
+            {
+                name: "Reverse Wrist Curl",
+                machine: "Low cable or seated with bar",
+                muscles: "Forearm Extensors, Brachioradialis",
+                sets: "3 sets × 12–15 reps",
+                rest: "45 sec",
+                form: [
+                    "Same position as wrist curls but palms facing down.",
+                    "Extend wrists upward as far as possible.",
+                    "Lower slowly — the lowering builds the most strength.",
+                    "Keep reps smooth and controlled.",
+                    "Less weight here is normal — extensors are weaker.",
+                ],
+                tip: "Balance your forearm training. This protects your wrists and elbows from the stress of all the curling and pressing you do.",
+            },
         ],
-        tip: "Hamstrings are critical for athletic performance and injury prevention. Train them as seriously as your quads — most people don't.",
-      },
-      {
-        name: "Standing Calf Raise",
-        machine: "Calf Raise Machine or Smith Machine",
-        muscles: "Gastrocnemius, Soleus",
-        sets: "4 sets × 15–20 reps",
-        rest: "45 sec",
-        form: [
-          "Stand with the balls of your feet on the platform, heels hanging.",
-          "Keep legs straight (slight bend, not locked).",
-          "Lower heels all the way down — full stretch at the bottom.",
-          "Rise up as high as you can, hard squeeze at the top.",
-          "Slow, controlled reps — no bouncing.",
+    },
+    {
+        day: "Core & Cardio",
+        label: "Core & Cardio",
+        icon: "🔥",
+        accentColor: "#3b82f6",
+        exercises: [
+            {
+                name: "Cable Crunch",
+                machine: "High Cable with rope, kneeling",
+                muscles: "Rectus Abdominis (upper & lower)",
+                sets: "4 sets × 15 reps",
+                rest: "45 sec",
+                form: [
+                    "Kneel facing the cable, rope held at your temples.",
+                    "Hinge at the hips, crunching your ribcage toward your pelvis.",
+                    "Round your back — don't pull with your arms.",
+                    "Squeeze hard at the bottom for 1 second.",
+                    "Return to upright slowly, feeling the stretch.",
+                ],
+                tip: "Cable crunches are the most effective abs exercise available at Planet Fitness. You can progressively overload them like any other lift.",
+            },
+            {
+                name: "Ab Machine Crunch",
+                machine: "Seated Ab Machine",
+                muscles: "Rectus Abdominis",
+                sets: "3 sets × 15–20 reps",
+                rest: "45 sec",
+                form: [
+                    "Adjust the machine so the pad rests on your upper chest.",
+                    "Cross your arms or hold the handles.",
+                    "Crunch forward, curling your upper body down.",
+                    "Don't rock your hips — isolate the abs.",
+                    "Squeeze at the bottom 1 second, slow return.",
+                ],
+                tip: "Pair this with cable crunches and your abs will be fully cooked. Don't go heavy — feel the muscle, don't just move the weight.",
+            },
+            {
+                name: "Oblique Twist (Cable)",
+                machine: "Cable tower, standing rotation",
+                muscles: "Obliques, Transverse Abdominis",
+                sets: "3 sets × 12 reps each side",
+                rest: "45 sec",
+                form: [
+                    "Set the cable at shoulder height, stand side-on.",
+                    "Hold the handle with both hands, arms out in front.",
+                    "Rotate your torso away from the cable — hips stay still.",
+                    "Control the return — resist the cable pulling you back.",
+                    "Keep your core braced the entire set.",
+                ],
+                tip: "Obliques are what makes your core look defined and athletic. Rotational strength also translates directly to sports performance.",
+            },
+            {
+                name: "Plank",
+                machine: "Floor (no equipment)",
+                muscles: "Full Core, Glutes, Shoulders",
+                sets: "3 sets × 30–60 sec holds",
+                rest: "30 sec",
+                form: [
+                    "Forearms on the ground, elbows under shoulders.",
+                    "Body in a straight line — no sagging hips, no raised butt.",
+                    "Squeeze your glutes and brace your abs like you're about to get punched.",
+                    "Breathe steadily — don't hold your breath.",
+                    "Build from 30 to 60 seconds over the 8 weeks.",
+                ],
+                tip: "The plank is boring and it works. Core stability is the difference between good and elite in every sport and lift.",
+            },
+            {
+                name: "Treadmill Intervals",
+                machine: "Treadmill",
+                muscles: "Cardiovascular System, Legs",
+                sets: "20 min total",
+                rest: "Active recovery during slow intervals",
+                form: [
+                    "Warm up: 2 min at easy walking pace.",
+                    "Run at a challenging pace for 1 minute.",
+                    "Walk at 3.5–4 mph for 1 minute.",
+                    "Repeat the run/walk cycle 8 times.",
+                    "Cool down: 2 min easy walk, then stretch.",
+                ],
+                tip: "Intervals burn more fat and build more cardio fitness than steady-state running in half the time. 20 minutes of real effort beats 45 minutes of cruise control.",
+            },
+            {
+                name: "Stairmaster or Bike",
+                machine: "StairMaster or Recumbent Bike",
+                muscles: "Glutes, Quads, Cardiovascular System",
+                sets: "15 min steady state",
+                rest: "N/A",
+                form: [
+                    "StairMaster: stay upright, don't lean on the rails.",
+                    "Bike: adjust seat so leg is almost fully extended at the bottom.",
+                    "Moderate resistance — you should be breathing hard but not gasping.",
+                    "Keep a steady pace for the full 15 minutes.",
+                    "Use this as cool-down cardio after the intervals.",
+                ],
+                tip: "Low-impact cardio at the end preserves your leg muscle while still burning calories. This is how you lose fat without losing the gains.",
+            },
         ],
-        tip: "Calves respond to high reps. Go slow and feel every rep — most people rush these and get nothing from them.",
-      },
-    ],
-  },
-  {
-    day: "Chest & Back",
-    label: "Chest & Back",
-    icon: "💪",
-    accentColor: "#2563eb",
-    exercises: [
-      {
-        name: "Chest Press Machine",
-        machine: "Seated Chest Press (Hammer Strength or Cable)",
-        muscles: "Pecs, Front Deltoids, Triceps",
-        sets: "4 sets × 10–12 reps",
-        rest: "90 sec",
-        form: [
-          "Adjust the seat so handles are at mid-chest height.",
-          "Grip handles with wrists straight — not bent back.",
-          "Retract your shoulder blades before each set and keep them back.",
-          "Press to full extension without locking elbows.",
-          "Control the return — 2 seconds back, feel the chest stretch.",
-        ],
-        tip: "Squeeze your chest as you press, not just your arms. Think about bringing your elbows together in front of you.",
-      },
-      {
-        name: "Pec Deck / Chest Fly",
-        machine: "Pec Deck Machine",
-        muscles: "Pecs (inner/outer), Front Deltoids",
-        sets: "3 sets × 12–15 reps",
-        rest: "60 sec",
-        form: [
-          "Sit with your back flat, feet on the floor.",
-          "Pads should sit on your forearms, not wrists.",
-          "Bring the pads together in a wide arc — like hugging a tree.",
-          "Hold the squeeze at the peak for 1 second.",
-          "Open wide on the way back — but stop before your shoulders roll forward.",
-        ],
-        tip: "This is one of the best chest isolation moves at Planet Fitness. Go lighter than you think and feel every single rep.",
-      },
-      {
-        name: "Cable Row (Seated)",
-        machine: "Low Cable Row with V-bar",
-        muscles: "Lats, Rhomboids, Rear Delts, Biceps",
-        sets: "4 sets × 10–12 reps",
-        rest: "90 sec",
-        form: [
-          "Sit tall with a slight forward lean — not hunched.",
-          "Pull the handle into your lower stomach, elbows close to your body.",
-          "Squeeze your shoulder blades together hard at the peak.",
-          "Hold 1 second at the back.",
-          "Extend arms fully on the return — let your lats stretch.",
-        ],
-        tip: "Back training is the secret weapon most guys skip. Pull with your elbows, not your hands — think of your hands as just hooks.",
-      },
-      {
-        name: "Lat Pulldown",
-        machine: "Cable Lat Pulldown",
-        muscles: "Lats, Teres Major, Biceps",
-        sets: "4 sets × 10–12 reps",
-        rest: "75 sec",
-        form: [
-          "Grip just outside shoulder-width. Lean back slightly (10–15°).",
-          "Pull the bar to your upper chest, driving elbows toward your hips.",
-          "Keep your chest tall and up as the bar comes down.",
-          "Squeeze at the bottom — feel your lats contract.",
-          "Return with control — full arm extension at the top.",
-        ],
-        tip: "Lat pulldowns build that wide V-taper look. Every single rep — squeeze and stretch. No half reps.",
-      },
-      {
-        name: "Cable Chest Fly",
-        machine: "Cable Crossover (high pulley)",
-        muscles: "Pecs, Front Deltoids",
-        sets: "3 sets × 12–15 reps",
-        rest: "60 sec",
-        form: [
-          "Stand in the center, cables set high.",
-          "Slight forward lean, slight bend in the elbows (and keep it there).",
-          "Bring hands together in front of your chest in a wide arc.",
-          "Cross hands slightly at the peak for full contraction.",
-          "Open arms slowly — feel the stretch, don't let it snap open.",
-        ],
-        tip: "End chest day with cables to really finish the muscle. You'll feel this the next day if you do it right.",
-      },
-    ],
-  },
-  {
-    day: "Biceps & Triceps",
-    label: "Biceps & Triceps",
-    icon: "🏋️",
-    accentColor: "#1d4ed8",
-    exercises: [
-      {
-        name: "Cable Curl",
-        machine: "Low Cable with EZ-bar or straight bar",
-        muscles: "Biceps Brachii, Brachialis",
-        sets: "4 sets × 10–12 reps",
-        rest: "60 sec",
-        form: [
-          "Stand close to the cable tower, elbows pinned to your sides.",
-          "Curl until your forearms are just past parallel.",
-          "Squeeze hard at the top for 1 second.",
-          "Lower slowly — 3-second negative.",
-          "Don't swing your body — if you are, the weight is too heavy.",
-        ],
-        tip: "Cables keep constant tension on your biceps the whole rep — way better than dumbbells for growth. Use them every arm day.",
-      },
-      {
-        name: "Preacher Curl Machine",
-        machine: "Seated Preacher Curl or Cable Preacher",
-        muscles: "Biceps (lower/peak)",
-        sets: "3 sets × 10–12 reps",
-        rest: "60 sec",
-        form: [
-          "Adjust so your armpits rest at the top of the pad.",
-          "Grip the bar or handles shoulder-width.",
-          "Curl up fully, squeezing at the top.",
-          "Lower very slowly — this is where the growth happens.",
-          "Don't let your arms go fully straight at the bottom — it strains the elbow.",
-        ],
-        tip: "The preacher curl removes all cheating. Your biceps do the entire job. Embrace the burn.",
-      },
-      {
-        name: "Hammer Curl (Cable Rope)",
-        machine: "Low Cable with rope attachment",
-        muscles: "Brachialis, Brachioradialis, Biceps",
-        sets: "3 sets × 12 reps",
-        rest: "60 sec",
-        form: [
-          "Attach a rope to the low cable.",
-          "Hold rope with neutral grip (palms facing each other).",
-          "Curl rope up, keeping palms neutral the whole way.",
-          "Squeeze at the top, lower with control.",
-          "Keep elbows anchored — no swinging.",
-        ],
-        tip: "Hammer curls build the brachialis, which actually pushes your bicep peak up and makes your arms look bigger from every angle.",
-      },
-      {
-        name: "Tricep Pushdown",
-        machine: "High Cable with rope or straight bar",
-        muscles: "All three tricep heads",
-        sets: "4 sets × 12–15 reps",
-        rest: "60 sec",
-        form: [
-          "Stand close to the cable, elbows pinned to your sides.",
-          "Push the rope or bar down until arms are fully extended.",
-          "At the bottom with a rope — spread the ends apart for peak contraction.",
-          "Hold 1 second at the bottom.",
-          "Return to 90° — don't let your elbows fly forward.",
-        ],
-        tip: "Triceps make up 2/3 of your upper arm. If you want bigger arms, train triceps as hard as biceps — most people get this backwards.",
-      },
-      {
-        name: "Overhead Tricep Extension",
-        machine: "High Cable with rope (facing away) or machine",
-        muscles: "Triceps Long Head",
-        sets: "3 sets × 12 reps",
-        rest: "60 sec",
-        form: [
-          "Face away from the cable tower, rope overhead.",
-          "Elbows point forward — keep them there.",
-          "Extend arms fully overhead, squeezing hard.",
-          "Lower slowly, feeling the stretch in your triceps.",
-          "Keep core tight — don't arch your lower back.",
-        ],
-        tip: "The long head of the tricep only gets fully stretched when your arm is overhead. This move is essential for complete tricep development.",
-      },
-      {
-        name: "Tricep Dip Machine",
-        machine: "Assisted Dip Machine (Planet Fitness has these)",
-        muscles: "Triceps, Chest, Front Deltoids",
-        sets: "3 sets × 10–12 reps",
-        rest: "75 sec",
-        form: [
-          "Set the assistance weight — less assistance = harder.",
-          "Keep your torso upright for more tricep focus.",
-          "Lower until arms hit 90°.",
-          "Press up to full extension, squeezing triceps.",
-          "Don't shrug your shoulders — keep them down.",
-        ],
-        tip: "Work toward doing these with zero assistance over the 8 weeks. That's your benchmark for arm day progress.",
-      },
-    ],
-  },
-  {
-    day: "Forearms & Shoulders",
-    label: "Forearms & Shoulders",
-    icon: "🎯",
-    accentColor: "#1d4ed8",
-    exercises: [
-      {
-        name: "Shoulder Press Machine",
-        machine: "Seated Shoulder Press Machine",
-        muscles: "Front & Side Deltoids, Triceps",
-        sets: "4 sets × 10–12 reps",
-        rest: "90 sec",
-        form: [
-          "Adjust the seat so handles are at shoulder height.",
-          "Keep your back flat against the pad — don't arch.",
-          "Press straight up, but don't lock out at the top.",
-          "Lower slowly — 2–3 seconds down.",
-          "Keep your neck relaxed — don't scrunch your traps.",
-        ],
-        tip: "Shoulder press is your strength builder here. This is the one machine to track weight progress on every week.",
-      },
-      {
-        name: "Cable Lateral Raise",
-        machine: "Single-arm low cable",
-        muscles: "Lateral Deltoids",
-        sets: "3 sets × 12–15 reps each side",
-        rest: "45 sec",
-        form: [
-          "Stand side-on to the cable tower, cable on the far side.",
-          "Slight bend in your elbow — lock that angle in.",
-          "Raise your arm out to the side until it's parallel to the floor.",
-          "Lead with your elbow, not your hand.",
-          "Lower slowly — don't let the cable slam back.",
-        ],
-        tip: "Lateral raises give you the wide shoulder look. Every rep, imagine you're pouring water out of a pitcher at the top.",
-      },
-      {
-        name: "Cable Face Pull",
-        machine: "High Cable with rope attachment",
-        muscles: "Rear Deltoids, Rotator Cuff, Traps",
-        sets: "3 sets × 15 reps",
-        rest: "60 sec",
-        form: [
-          "Set the cable at face height or slightly above.",
-          "Pull the rope toward your face, splitting it apart at the end.",
-          "Elbows flare out — keep them above shoulder height.",
-          "Squeeze your rear delts and traps hard at the peak.",
-          "Control the return.",
-        ],
-        tip: "Face pulls are shoulder health in one exercise. They balance all the pressing you do and keep your rotator cuff healthy for years.",
-      },
-      {
-        name: "Machine Rear Delt Fly",
-        machine: "Pec Deck Machine (reversed) or Rear Delt Machine",
-        muscles: "Rear Deltoids, Rhomboids",
-        sets: "3 sets × 12–15 reps",
-        rest: "60 sec",
-        form: [
-          "Sit facing the machine pad, adjusting arms to shoulder height.",
-          "Grip the handles and open your arms wide like wings.",
-          "Keep a slight bend in your elbows throughout.",
-          "Squeeze the rear delts hard at peak — pause 1 second.",
-          "Don't let your hands go past 180° — slow return.",
-        ],
-        tip: "Most people only train the front of their shoulders. Rear delts give your shoulders that full, 3D look — and protect your joints.",
-      },
-      {
-        name: "Wrist Curl (Cable)",
-        machine: "Low cable with straight bar",
-        muscles: "Forearm Flexors",
-        sets: "3 sets × 15–20 reps",
-        rest: "45 sec",
-        form: [
-          "Sit at a bench, forearms resting on your thighs, palms up.",
-          "Hold the bar and let it roll to your fingertips at the bottom.",
-          "Curl your wrists up as far as possible.",
-          "Squeeze at the top and lower slowly.",
-          "Keep your forearms still — only your wrists move.",
-        ],
-        tip: "Strong forearms mean a stronger grip on every other exercise. They're the foundation you don't see but feel everywhere.",
-      },
-      {
-        name: "Reverse Wrist Curl",
-        machine: "Low cable or seated with bar",
-        muscles: "Forearm Extensors, Brachioradialis",
-        sets: "3 sets × 12–15 reps",
-        rest: "45 sec",
-        form: [
-          "Same position as wrist curls but palms facing down.",
-          "Extend wrists upward as far as possible.",
-          "Lower slowly — the lowering builds the most strength.",
-          "Keep reps smooth and controlled.",
-          "Less weight here is normal — extensors are weaker.",
-        ],
-        tip: "Balance your forearm training. This protects your wrists and elbows from the stress of all the curling and pressing you do.",
-      },
-    ],
-  },
-  {
-    day: "Core & Cardio",
-    label: "Core & Cardio",
-    icon: "🔥",
-    accentColor: "#3b82f6",
-    exercises: [
-      {
-        name: "Cable Crunch",
-        machine: "High Cable with rope, kneeling",
-        muscles: "Rectus Abdominis (upper & lower)",
-        sets: "4 sets × 15 reps",
-        rest: "45 sec",
-        form: [
-          "Kneel facing the cable, rope held at your temples.",
-          "Hinge at the hips, crunching your ribcage toward your pelvis.",
-          "Round your back — don't pull with your arms.",
-          "Squeeze hard at the bottom for 1 second.",
-          "Return to upright slowly, feeling the stretch.",
-        ],
-        tip: "Cable crunches are the most effective abs exercise available at Planet Fitness. You can progressively overload them like any other lift.",
-      },
-      {
-        name: "Ab Machine Crunch",
-        machine: "Seated Ab Machine",
-        muscles: "Rectus Abdominis",
-        sets: "3 sets × 15–20 reps",
-        rest: "45 sec",
-        form: [
-          "Adjust the machine so the pad rests on your upper chest.",
-          "Cross your arms or hold the handles.",
-          "Crunch forward, curling your upper body down.",
-          "Don't rock your hips — isolate the abs.",
-          "Squeeze at the bottom 1 second, slow return.",
-        ],
-        tip: "Pair this with cable crunches and your abs will be fully cooked. Don't go heavy — feel the muscle, don't just move the weight.",
-      },
-      {
-        name: "Oblique Twist (Cable)",
-        machine: "Cable tower, standing rotation",
-        muscles: "Obliques, Transverse Abdominis",
-        sets: "3 sets × 12 reps each side",
-        rest: "45 sec",
-        form: [
-          "Set the cable at shoulder height, stand side-on.",
-          "Hold the handle with both hands, arms out in front.",
-          "Rotate your torso away from the cable — hips stay still.",
-          "Control the return — resist the cable pulling you back.",
-          "Keep your core braced the entire set.",
-        ],
-        tip: "Obliques are what makes your core look defined and athletic. Rotational strength also translates directly to sports performance.",
-      },
-      {
-        name: "Plank",
-        machine: "Floor (no equipment)",
-        muscles: "Full Core, Glutes, Shoulders",
-        sets: "3 sets × 30–60 sec holds",
-        rest: "30 sec",
-        form: [
-          "Forearms on the ground, elbows under shoulders.",
-          "Body in a straight line — no sagging hips, no raised butt.",
-          "Squeeze your glutes and brace your abs like you're about to get punched.",
-          "Breathe steadily — don't hold your breath.",
-          "Build from 30 to 60 seconds over the 8 weeks.",
-        ],
-        tip: "The plank is boring and it works. Core stability is the difference between good and elite in every sport and lift.",
-      },
-      {
-        name: "Treadmill Intervals",
-        machine: "Treadmill",
-        muscles: "Cardiovascular System, Legs",
-        sets: "20 min total",
-        rest: "Active recovery during slow intervals",
-        form: [
-          "Warm up: 2 min at easy walking pace.",
-          "Run at a challenging pace for 1 minute.",
-          "Walk at 3.5–4 mph for 1 minute.",
-          "Repeat the run/walk cycle 8 times.",
-          "Cool down: 2 min easy walk, then stretch.",
-        ],
-        tip: "Intervals burn more fat and build more cardio fitness than steady-state running in half the time. 20 minutes of real effort beats 45 minutes of cruise control.",
-      },
-      {
-        name: "Stairmaster or Bike",
-        machine: "StairMaster or Recumbent Bike",
-        muscles: "Glutes, Quads, Cardiovascular System",
-        sets: "15 min steady state",
-        rest: "N/A",
-        form: [
-          "StairMaster: stay upright, don't lean on the rails.",
-          "Bike: adjust seat so leg is almost fully extended at the bottom.",
-          "Moderate resistance — you should be breathing hard but not gasping.",
-          "Keep a steady pace for the full 15 minutes.",
-          "Use this as cool-down cardio after the intervals.",
-        ],
-        tip: "Low-impact cardio at the end preserves your leg muscle while still burning calories. This is how you lose fat without losing the gains.",
-      },
-    ],
-  },
+    },
 ];
-
 const tips = [
-  {
-    category: "Sleep",
-    icon: "😴",
-    color: "#3b82f6",
-    headline: "8–10 Hours Is Non-Negotiable",
-    points: [
-      "Your muscles don't grow in the gym — they grow while you sleep. If you're not sleeping enough, you're literally leaving gains on the table.",
-      "Growth hormone peaks during deep sleep. As a teenager, you produce more of it than you ever will again. Don't waste that.",
-      "Keep your sleep schedule consistent — same bedtime and wake time every day, even weekends.",
-      "No screens 30 minutes before bed. Your phone is the enemy of your gains at night.",
-      "If you sleep 8 hours but still feel tired, look at your nutrition. Low protein or calories can kill your energy.",
-    ],
-  },
-  {
-    category: "Protein",
-    icon: "🥩",
-    color: "#2563eb",
-    headline: "Aim for 0.7–1g of Protein Per Pound of Bodyweight",
-    points: [
-      "Protein is the building material for muscle. Without enough of it, no matter how hard you train, you won't grow.",
-      "Hit protein from real food first: chicken, eggs, Greek yogurt, tuna, cottage cheese, ground beef, milk.",
-      "A protein shake after the gym is convenient but not magic. Food first, shake as backup.",
-      "Spread protein across the day — your body can only use so much at once. 4–5 meals beats 1 big meal.",
-      "Don't obsess over supplements. Creatine is the only one with solid science for teens, and even that can wait until 16–17.",
-    ],
-  },
-  {
-    category: "Consistency",
-    icon: "📅",
-    color: "#1d4ed8",
-    headline: "Show Up. That's the Whole Secret.",
-    points: [
-      "The best program in the world means nothing if you don't follow it. A mediocre program done consistently beats a perfect program done sometimes.",
-      "Track your lifts in a notes app or journal. If you can't see progress, you can't make progress.",
-      "Missing one day isn't failure. Missing two in a row is the start of a habit. Don't let two become three.",
-      "Progress is slow and then suddenly fast. Most people quit right before they see results. Don't be most people.",
-      "Compare yourself to yourself from 8 weeks ago — not to guys on Instagram who've been training for 5 years.",
-    ],
-  },
-  {
-    category: "Ego Lifting",
-    icon: "🚫",
-    color: "#3b82f6",
-    headline: "Heavy Weight With Bad Form Is Just Expensive Injury",
-    points: [
-      "The weight on the stack means nothing. The feeling in the muscle means everything.",
-      "Half reps, swinging, bouncing — you're just moving weight. You're not training the muscle.",
-      "Leave your ego at the door. The strongest guys in any gym use controlled form. That's how they got strong.",
-      "If you can't do it with perfect form, drop the weight. No exceptions.",
-      "Injuries derail progress for weeks or months. One bad set isn't worth 8 weeks of recovery.",
-    ],
-  },
-  {
-    category: "Patience",
-    icon: "⏳",
-    color: "#2563eb",
-    headline: "Real Changes Take Months, Not Weeks",
-    points: [
-      "Visible muscle takes 3–6 months minimum of consistent training and eating. Anyone telling you different is selling something.",
-      "The first 4–8 weeks are mostly neural adaptation — your nervous system learning to use your muscles better. Trust the process.",
-      "Body composition changes faster if your nutrition is on point. You can't out-train a bad diet.",
-      "Take progress photos every 4 weeks. The scale lies. Photos and measurements tell the real story.",
-      "You're 15. You have years ahead of you. Building good habits now means you'll be ahead of 95% of people for the rest of your life.",
-    ],
-  },
-  {
-    category: "Nutrition Basics",
-    icon: "🥦",
-    color: "#1d4ed8",
-    headline: "Eat Like You Mean It",
-    points: [
-      "Eat enough. Building muscle requires a slight caloric surplus — if you're always hungry and tired, eat more.",
-      "Carbs are not the enemy. They fuel your workouts. Rice, oats, potatoes, fruit — eat them.",
-      "Vegetables and fruits every day. Micronutrients (vitamins, minerals) affect your energy, recovery, and hormones.",
-      "Drink water constantly. Aim for half your bodyweight (lbs) in ounces per day — more on training days.",
-      "Pre-workout meal: eat 1–2 hours before training. Carbs + protein. Post-workout: protein + carbs within 30–60 minutes.",
-    ],
-  },
+    {
+        category: "Sleep",
+        icon: "😴",
+        color: "#3b82f6",
+        headline: "8–10 Hours Is Non-Negotiable",
+        points: [
+            "Your muscles don't grow in the gym — they grow while you sleep. If you're not sleeping enough, you're literally leaving gains on the table.",
+            "Growth hormone peaks during deep sleep. As a teenager, you produce more of it than you ever will again. Don't waste that.",
+            "Keep your sleep schedule consistent — same bedtime and wake time every day, even weekends.",
+            "No screens 30 minutes before bed. Your phone is the enemy of your gains at night.",
+            "If you sleep 8 hours but still feel tired, look at your nutrition. Low protein or calories can kill your energy.",
+        ],
+    },
+    {
+        category: "Protein",
+        icon: "🥩",
+        color: "#2563eb",
+        headline: "Aim for 0.7–1g of Protein Per Pound of Bodyweight",
+        points: [
+            "Protein is the building material for muscle. Without enough of it, no matter how hard you train, you won't grow.",
+            "Hit protein from real food first: chicken, eggs, Greek yogurt, tuna, cottage cheese, ground beef, milk.",
+            "A protein shake after the gym is convenient but not magic. Food first, shake as backup.",
+            "Spread protein across the day — your body can only use so much at once. 4–5 meals beats 1 big meal.",
+            "Don't obsess over supplements. Creatine is the only one with solid science for teens, and even that can wait until 16–17.",
+        ],
+    },
+    {
+        category: "Consistency",
+        icon: "📅",
+        color: "#1d4ed8",
+        headline: "Show Up. That's the Whole Secret.",
+        points: [
+            "The best program in the world means nothing if you don't follow it. A mediocre program done consistently beats a perfect program done sometimes.",
+            "Track your lifts in a notes app or journal. If you can't see progress, you can't make progress.",
+            "Missing one day isn't failure. Missing two in a row is the start of a habit. Don't let two become three.",
+            "Progress is slow and then suddenly fast. Most people quit right before they see results. Don't be most people.",
+            "Compare yourself to yourself from 8 weeks ago — not to guys on Instagram who've been training for 5 years.",
+        ],
+    },
+    {
+        category: "Ego Lifting",
+        icon: "🚫",
+        color: "#3b82f6",
+        headline: "Heavy Weight With Bad Form Is Just Expensive Injury",
+        points: [
+            "The weight on the stack means nothing. The feeling in the muscle means everything.",
+            "Half reps, swinging, bouncing — you're just moving weight. You're not training the muscle.",
+            "Leave your ego at the door. The strongest guys in any gym use controlled form. That's how they got strong.",
+            "If you can't do it with perfect form, drop the weight. No exceptions.",
+            "Injuries derail progress for weeks or months. One bad set isn't worth 8 weeks of recovery.",
+        ],
+    },
+    {
+        category: "Patience",
+        icon: "⏳",
+        color: "#2563eb",
+        headline: "Real Changes Take Months, Not Weeks",
+        points: [
+            "Visible muscle takes 3–6 months minimum of consistent training and eating. Anyone telling you different is selling something.",
+            "The first 4–8 weeks are mostly neural adaptation — your nervous system learning to use your muscles better. Trust the process.",
+            "Body composition changes faster if your nutrition is on point. You can't out-train a bad diet.",
+            "Take progress photos every 4 weeks. The scale lies. Photos and measurements tell the real story.",
+            "You're 15. You have years ahead of you. Building good habits now means you'll be ahead of 95% of people for the rest of your life.",
+        ],
+    },
+    {
+        category: "Nutrition Basics",
+        icon: "🥦",
+        color: "#1d4ed8",
+        headline: "Eat Like You Mean It",
+        points: [
+            "Eat enough. Building muscle requires a slight caloric surplus — if you're always hungry and tired, eat more.",
+            "Carbs are not the enemy. They fuel your workouts. Rice, oats, potatoes, fruit — eat them.",
+            "Vegetables and fruits every day. Micronutrients (vitamins, minerals) affect your energy, recovery, and hormones.",
+            "Drink water constantly. Aim for half your bodyweight (lbs) in ounces per day — more on training days.",
+            "Pre-workout meal: eat 1–2 hours before training. Carbs + protein. Post-workout: protein + carbs within 30–60 minutes.",
+        ],
+    },
 ];
-
 // ─── COACHING LOGIC ──────────────────────────────────────────────────────────
-
 function getCoaching(sessions) {
-  if (!sessions.length) return null;
-  const last = sessions[sessions.length - 1];
-  const lastWeight = last.sets[0]?.weight ?? 0;
-  const allSets = last.sets;
-  const avgReps = allSets.reduce((s, x) => s + (parseInt(x.reps) || 0), 0) / (allSets.length || 1);
-  const targetReps = 10;
-
-  let stuck = false;
-  if (sessions.length >= 3) {
-    const last3 = sessions.slice(-3).map(s => s.sets[0]?.weight ?? 0);
-    stuck = last3.every(w => w === last3[0]);
-  }
-
-  let advice, adviceColor, adviceIcon;
-  if (avgReps >= targetReps) {
-    advice = `Increase weight by 5 lbs next session. You hit ${Math.round(avgReps)} reps — you're ready.`;
-    adviceColor = "#22c55e";
-    adviceIcon = "⬆️";
-  } else if (avgReps >= targetReps * 0.75) {
-    advice = `Stay at ${lastWeight} lbs and push for more reps next session. You're close — don't jump weight yet.`;
-    adviceColor = "#f59e0b";
-    adviceIcon = "🔁";
-  } else {
-    advice = `Great job maintaining. Focus on form and try to squeeze out one more rep per set next time.`;
-    adviceColor = "#3b82f6";
-    adviceIcon = "💪";
-  }
-
-  const stuckTips = [
-    "Try a drop set on your last set — do your weight to failure, then drop 20% and go again.",
-    "Add a pause at the peak contraction for 2 seconds every rep. More tension = more growth.",
-    "Reduce rest time by 15 seconds to increase intensity without adding weight.",
-    "Focus on the slow negative (lowering) phase — take 4 seconds going down.",
-    "Check your sleep and protein. Plateaus are often a recovery problem, not a training problem.",
-  ];
-  const stuckTip = stuckTips[Math.floor(Math.random() * stuckTips.length)];
-
-  return { advice, adviceColor, adviceIcon, stuck, stuckTip, lastWeight };
+    var _a, _b;
+    if (!sessions.length)
+        return null;
+    const last = sessions[sessions.length - 1];
+    const lastWeight = (_b = (_a = last.sets[0]) === null || _a === void 0 ? void 0 : _a.weight) !== null && _b !== void 0 ? _b : 0;
+    const allSets = last.sets;
+    const avgReps = allSets.reduce((s, x) => s + (parseInt(x.reps) || 0), 0) / (allSets.length || 1);
+    const targetReps = 10;
+    let stuck = false;
+    if (sessions.length >= 3) {
+        const last3 = sessions.slice(-3).map(s => { var _a, _b; return (_b = (_a = s.sets[0]) === null || _a === void 0 ? void 0 : _a.weight) !== null && _b !== void 0 ? _b : 0; });
+        stuck = last3.every(w => w === last3[0]);
+    }
+    let advice, adviceColor, adviceIcon;
+    if (avgReps >= targetReps) {
+        advice = `Increase weight by 5 lbs next session. You hit ${Math.round(avgReps)} reps — you're ready.`;
+        adviceColor = "#22c55e";
+        adviceIcon = "⬆️";
+    }
+    else if (avgReps >= targetReps * 0.75) {
+        advice = `Stay at ${lastWeight} lbs and push for more reps next session. You're close — don't jump weight yet.`;
+        adviceColor = "#f59e0b";
+        adviceIcon = "🔁";
+    }
+    else {
+        advice = `Great job maintaining. Focus on form and try to squeeze out one more rep per set next time.`;
+        adviceColor = "#3b82f6";
+        adviceIcon = "💪";
+    }
+    const stuckTips = [
+        "Try a drop set on your last set — do your weight to failure, then drop 20% and go again.",
+        "Add a pause at the peak contraction for 2 seconds every rep. More tension = more growth.",
+        "Reduce rest time by 15 seconds to increase intensity without adding weight.",
+        "Focus on the slow negative (lowering) phase — take 4 seconds going down.",
+        "Check your sleep and protein. Plateaus are often a recovery problem, not a training problem.",
+    ];
+    const stuckTip = stuckTips[Math.floor(Math.random() * stuckTips.length)];
+    return { advice, adviceColor, adviceIcon, stuck, stuckTip, lastWeight };
 }
-
 // ─── SHARED UI BITS ──────────────────────────────────────────────────────────
-
 function WeekSelector({ selected, onSelect }) {
-  return (
-    <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "24px" }}>
-      {phases.map((p, i) => (
-        <button
-          key={i}
-          onClick={() => onSelect(i)}
-          style={{
+    return (React.createElement("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "24px" } }, phases.map((p, i) => (React.createElement("button", { key: i, onClick: () => onSelect(i), style: {
             flex: "1 1 auto",
             minWidth: "120px",
             padding: "10px 14px",
@@ -730,1072 +736,760 @@ function WeekSelector({ selected, onSelect }) {
             cursor: "pointer",
             transition: "all 0.2s",
             textAlign: "center",
-          }}
-        >
-          <div style={{ fontSize: "11px", color: selected === i ? p.color : "#4a5568", fontWeight: "600", marginBottom: "2px" }}>{p.tag}</div>
-          {p.label}
-        </button>
-      ))}
-    </div>
-  );
+        } },
+        React.createElement("div", { style: { fontSize: "11px", color: selected === i ? p.color : "#4a5568", fontWeight: "600", marginBottom: "2px" } }, p.tag),
+        p.label)))));
 }
-
 function PhaseCard({ phase }) {
-  return (
-    <div style={{
-      background: "linear-gradient(135deg, #0f1923 0%, #111d2b 100%)",
-      border: `1px solid ${phase.color}40`,
-      borderLeft: `4px solid ${phase.color}`,
-      borderRadius: "12px",
-      padding: "20px",
-      marginBottom: "24px",
-    }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" }}>
-        <div style={{
-          background: `${phase.color}22`,
-          color: phase.color,
-          padding: "4px 12px",
-          borderRadius: "20px",
-          fontSize: "12px",
-          fontWeight: "700",
-          letterSpacing: "0.08em",
-          textTransform: "uppercase",
-        }}>{phase.label} · {phase.tag}</div>
-      </div>
-      <p style={{ color: "#b0bec5", fontSize: "14px", marginBottom: "16px", lineHeight: "1.5" }}>{phase.desc}</p>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "10px" }}>
-        {[["Sets", phase.sets], ["Reps", phase.reps], ["Rest", phase.rest], ["Intensity", phase.intensity]].map(([label, val]) => (
-          <div key={label} style={{
-            background: "#0a1118",
-            borderRadius: "8px",
-            padding: "10px 14px",
-            border: "1px solid #1e2a3a",
-          }}>
-            <div style={{ color: "#4a5a6a", fontSize: "11px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "4px" }}>{label}</div>
-            <div style={{ color: "#e2e8f0", fontSize: "14px", fontWeight: "600" }}>{val}</div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
+    return (React.createElement("div", { style: {
+            background: "linear-gradient(135deg, #0f1923 0%, #111d2b 100%)",
+            border: `1px solid ${phase.color}40`,
+            borderLeft: `4px solid ${phase.color}`,
+            borderRadius: "12px",
+            padding: "20px",
+            marginBottom: "24px",
+        } },
+        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: "12px", marginBottom: "12px" } },
+            React.createElement("div", { style: {
+                    background: `${phase.color}22`,
+                    color: phase.color,
+                    padding: "4px 12px",
+                    borderRadius: "20px",
+                    fontSize: "12px",
+                    fontWeight: "700",
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                } },
+                phase.label,
+                " \u00B7 ",
+                phase.tag)),
+        React.createElement("p", { style: { color: "#b0bec5", fontSize: "14px", marginBottom: "16px", lineHeight: "1.5" } }, phase.desc),
+        React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "10px" } }, [["Sets", phase.sets], ["Reps", phase.reps], ["Rest", phase.rest], ["Intensity", phase.intensity]].map(([label, val]) => (React.createElement("div", { key: label, style: {
+                background: "#0a1118",
+                borderRadius: "8px",
+                padding: "10px 14px",
+                border: "1px solid #1e2a3a",
+            } },
+            React.createElement("div", { style: { color: "#4a5a6a", fontSize: "11px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "4px" } }, label),
+            React.createElement("div", { style: { color: "#e2e8f0", fontSize: "14px", fontWeight: "600" } }, val)))))));
 }
-
 function ExerciseCard({ exercise, accent }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div style={{
-      background: "#0a1118",
-      border: open ? `1px solid ${accent}60` : "1px solid #1e2a3a",
-      borderRadius: "12px",
-      marginBottom: "10px",
-      overflow: "hidden",
-      transition: "border-color 0.2s",
-    }}>
-      <button
-        onClick={() => setOpen(!open)}
-        style={{
-          width: "100%",
-          padding: "16px",
-          background: "transparent",
-          border: "none",
-          cursor: "pointer",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          color: "#e2e8f0",
-          fontFamily: "'Inter', sans-serif",
-          textAlign: "left",
-        }}
-      >
-        <div>
-          <div style={{ fontWeight: "700", fontSize: "15px", marginBottom: "4px" }}>{exercise.name}</div>
-          <div style={{ fontSize: "12px", color: "#4a7a9b" }}>{exercise.muscles}</div>
-        </div>
-        <div style={{
-          width: "28px", height: "28px", borderRadius: "50%",
-          background: open ? `${accent}22` : "#111d2b",
-          border: `1px solid ${open ? accent : "#1e2a3a"}`,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          color: open ? accent : "#6b7a8d",
-          fontSize: "16px",
-          flexShrink: 0,
-          transition: "all 0.2s",
-          transform: open ? "rotate(45deg)" : "none",
-        }}>+</div>
-      </button>
-
-      {open && (
-        <div style={{ padding: "0 16px 16px", borderTop: `1px solid ${accent}30` }}>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginTop: "14px", marginBottom: "16px" }}>
-            <div style={{ background: "#060d14", borderRadius: "8px", padding: "10px 12px", border: "1px solid #1e2a3a" }}>
-              <div style={{ color: "#4a5a6a", fontSize: "10px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "3px" }}>Sets / Reps</div>
-              <div style={{ color: "#93c5fd", fontWeight: "600", fontSize: "13px" }}>{exercise.sets}</div>
-            </div>
-            <div style={{ background: "#060d14", borderRadius: "8px", padding: "10px 12px", border: "1px solid #1e2a3a" }}>
-              <div style={{ color: "#4a5a6a", fontSize: "10px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "3px" }}>Rest</div>
-              <div style={{ color: "#93c5fd", fontWeight: "600", fontSize: "13px" }}>{exercise.rest}</div>
-            </div>
-          </div>
-          <div style={{ background: "#060d14", borderRadius: "8px", padding: "10px 12px", border: "1px solid #1e2a3a", marginBottom: "16px" }}>
-            <div style={{ color: "#4a5a6a", fontSize: "10px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "3px" }}>Machine</div>
-            <div style={{ color: "#b0bec5", fontSize: "13px" }}>{exercise.machine}</div>
-          </div>
-
-          <div style={{ marginBottom: "16px" }}>
-            <div style={{ color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "10px" }}>Form Cues</div>
-            {exercise.form.map((cue, i) => (
-              <div key={i} style={{ display: "flex", gap: "10px", marginBottom: "8px", alignItems: "flex-start" }}>
-                <div style={{
-                  minWidth: "22px", height: "22px", borderRadius: "50%",
-                  background: `${accent}22`, color: accent,
-                  fontWeight: "700", fontSize: "11px",
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  flexShrink: 0, marginTop: "1px",
-                }}>{i + 1}</div>
-                <div style={{ color: "#b0bec5", fontSize: "13px", lineHeight: "1.5" }}>{cue}</div>
-              </div>
-            ))}
-          </div>
-
-          <div style={{
-            background: `${accent}12`,
-            border: `1px solid ${accent}30`,
-            borderRadius: "8px",
-            padding: "12px 14px",
-          }}>
-            <div style={{ color: accent, fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "6px" }}>⚡ Pro Tip</div>
-            <div style={{ color: "#b0bec5", fontSize: "13px", lineHeight: "1.5" }}>{exercise.tip}</div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function DayCard({ workout }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div style={{
-      background: "#0f1923",
-      border: open ? `1px solid ${workout.accentColor}50` : "1px solid #1e2a3a",
-      borderRadius: "14px",
-      marginBottom: "12px",
-      overflow: "hidden",
-      transition: "border-color 0.2s",
-    }}>
-      <button
-        onClick={() => setOpen(!open)}
-        style={{
-          width: "100%",
-          padding: "18px 20px",
-          background: "transparent",
-          border: "none",
-          cursor: "pointer",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          fontFamily: "'Inter', sans-serif",
-          textAlign: "left",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-          <div style={{
-            width: "44px", height: "44px", borderRadius: "12px",
-            background: `${workout.accentColor}20`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: "22px",
-          }}>{workout.icon}</div>
-          <div>
-            <div style={{ color: workout.accentColor, fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "3px" }}>Workout</div>
-            <div style={{ color: "#e2e8f0", fontWeight: "800", fontSize: "18px", letterSpacing: "-0.02em" }}>{workout.label}</div>
-          </div>
-        </div>
-        <div style={{
-          padding: "6px 12px", borderRadius: "8px",
-          background: open ? `${workout.accentColor}22` : "#0a1118",
-          color: open ? workout.accentColor : "#6b7a8d",
-          fontSize: "12px", fontWeight: "600",
-          border: `1px solid ${open ? workout.accentColor + "50" : "#1e2a3a"}`,
-          transition: "all 0.2s",
-        }}>
-          {open ? "Close" : `${workout.exercises.length} exercises`}
-        </div>
-      </button>
-
-      {open && (
-        <div style={{ padding: "0 16px 16px", borderTop: `1px solid ${workout.accentColor}25` }}>
-          <div style={{ marginTop: "16px" }}>
-            {workout.exercises.map((ex, i) => (
-              <ExerciseCard key={i} exercise={ex} accent={workout.accentColor} />
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function TipCard({ tip }) {
-  const [open, setOpen] = useState(false);
-  return (
-    <div style={{
-      background: "#0f1923",
-      border: open ? `1px solid ${tip.color}50` : "1px solid #1e2a3a",
-      borderRadius: "14px",
-      marginBottom: "12px",
-      overflow: "hidden",
-      transition: "border-color 0.2s",
-    }}>
-      <button
-        onClick={() => setOpen(!open)}
-        style={{
-          width: "100%",
-          padding: "18px 20px",
-          background: "transparent",
-          border: "none",
-          cursor: "pointer",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          fontFamily: "'Inter', sans-serif",
-          textAlign: "left",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-          <div style={{
-            width: "42px", height: "42px", borderRadius: "12px",
-            background: `${tip.color}20`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: "20px",
-          }}>{tip.icon}</div>
-          <div>
-            <div style={{ color: tip.color, fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "3px" }}>{tip.category}</div>
-            <div style={{ color: "#e2e8f0", fontWeight: "700", fontSize: "15px", lineHeight: "1.3" }}>{tip.headline}</div>
-          </div>
-        </div>
-        <div style={{
-          minWidth: "28px", height: "28px", borderRadius: "50%",
-          background: open ? `${tip.color}22` : "#0a1118",
-          border: `1px solid ${open ? tip.color : "#1e2a3a"}`,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          color: open ? tip.color : "#6b7a8d",
-          fontSize: "18px",
-          transition: "all 0.2s",
-          transform: open ? "rotate(45deg)" : "none",
-          flexShrink: 0,
-        }}>+</div>
-      </button>
-
-      {open && (
-        <div style={{ padding: "0 20px 20px", borderTop: `1px solid ${tip.color}25` }}>
-          <div style={{ marginTop: "14px" }}>
-            {tip.points.map((pt, i) => (
-              <div key={i} style={{ display: "flex", gap: "12px", marginBottom: "10px", alignItems: "flex-start" }}>
-                <div style={{
-                  width: "6px", height: "6px", borderRadius: "50%",
-                  background: tip.color,
-                  flexShrink: 0, marginTop: "7px",
-                }} />
-                <div style={{ color: "#b0bec5", fontSize: "14px", lineHeight: "1.6" }}>{pt}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── TRACKER TAB ─────────────────────────────────────────────────────────────
-
-function TrackerTab() {
-  const [log, setLog] = useState(() => ls_get(WORKOUT_LOG_KEY, []));
-  const [view, setView] = useState("log"); // log | progress | bodyweight | nutrition
-
-  // Draft — auto-saved so navigating away never loses in-progress entries
-  const [draft, setDraft] = useState(() => ls_get(DRAFT_KEY, {
-    selectedDay: 0,
-    selectedExIdx: 0,
-    sets: [{ weight: "", reps: "12" }, { weight: "", reps: "12" }, { weight: "", reps: "12" }],
-  }));
-  const { selectedDay, selectedExIdx, sets } = draft;
-
-  function updateDraft(patch) {
-    setDraft(prev => {
-      const next = { ...prev, ...patch };
-      ls_set(DRAFT_KEY, next);
-      return next;
-    });
-  }
-  function setSelectedDay(v) { updateDraft({ selectedDay: v, selectedExIdx: 0 }); }
-  function setSelectedExIdx(v) { updateDraft({ selectedExIdx: v }); }
-  function setSets(fn) {
-    setDraft(prev => {
-      const nextSets = typeof fn === "function" ? fn(prev.sets) : fn;
-      const next = { ...prev, sets: nextSets };
-      ls_set(DRAFT_KEY, next);
-      return next;
-    });
-  }
-
-  const [saved, setSaved] = useState(false);
-  const dayData = workoutDays[selectedDay];
-  const exercise = dayData.exercises[selectedExIdx];
-
-  // Progress view
-  const [progDay, setProgDay] = useState(0);
-  const [progExIdx, setProgExIdx] = useState(0);
-
-  // Body weight
-  const [bwLog, setBwLog] = useState(() => ls_get(BODYWEIGHT_KEY, []));
-  const [goalWeight, setGoalWeight] = useState(() => ls_get(GOAL_WEIGHT_KEY, ""));
-  const [bwInput, setBwInput] = useState("");
-  const [goalInput, setGoalInput] = useState(() => ls_get(GOAL_WEIGHT_KEY, ""));
-  const [goalSaved, setGoalSaved] = useState(false);
-
-  // Nutrition
-  const [nutritionLog, setNutritionLog] = useState(() => ls_get(NUTRITION_KEY, []));
-  const [foodName, setFoodName] = useState("");
-  const [foodCals, setFoodCals] = useState("");
-  const [foodProt, setFoodProt] = useState("");
-  const [foodCarbs, setFoodCarbs] = useState("");
-
-  const todayNutrition = nutritionLog.filter(e => e.date === todayStr());
-  const totalCals = todayNutrition.reduce((a, e) => a + (e.cals || 0), 0);
-  const totalProt = todayNutrition.reduce((a, e) => a + (e.prot || 0), 0);
-  const totalCarbs = todayNutrition.reduce((a, e) => a + (e.carbs || 0), 0);
-
-  function persistLog(newLog) {
-    setLog(newLog);
-    ls_set(WORKOUT_LOG_KEY, newLog);
-  }
-
-  function handleSave() {
-    const validSets = sets.filter(s => s.weight !== "" && s.reps !== "");
-    if (!validSets.length) return;
-    const entry = {
-      id: Date.now(),
-      date: todayStr(),
-      day: dayData.day,
-      exerciseName: exercise.name,
-      sets: validSets.map(s => ({ weight: parseFloat(s.weight) || 0, reps: parseInt(s.reps) || 0 })),
-    };
-    persistLog([...log, entry]);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
-    const cleared = {
-      selectedDay,
-      selectedExIdx,
-      sets: [{ weight: "", reps: "12" }, { weight: "", reps: "12" }, { weight: "", reps: "12" }],
-    };
-    setDraft(cleared);
-    ls_set(DRAFT_KEY, cleared);
-  }
-
-  function handleDeleteEntry(id) { persistLog(log.filter(e => e.id !== id)); }
-  function addSet() { setSets(prev => [...prev, { weight: "", reps: "12" }]); }
-  function removeSet(i) { setSets(prev => prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev); }
-  function updateSet(i, field, val) { setSets(prev => prev.map((s, idx) => idx === i ? { ...s, [field]: val } : s)); }
-
-  function handleLogWeight() {
-    if (!bwInput) return;
-    const entry = { id: Date.now(), date: todayStr(), weight: parseFloat(bwInput) };
-    const next = [...bwLog, entry];
-    setBwLog(next);
-    ls_set(BODYWEIGHT_KEY, next);
-    setBwInput("");
-  }
-  function handleSaveGoal() {
-    setGoalWeight(goalInput);
-    ls_set(GOAL_WEIGHT_KEY, goalInput);
-    setGoalSaved(true);
-    setTimeout(() => setGoalSaved(false), 1500);
-  }
-  function handleDeleteBw(id) {
-    const next = bwLog.filter(e => e.id !== id);
-    setBwLog(next);
-    ls_set(BODYWEIGHT_KEY, next);
-  }
-
-  function handleAddFood() {
-    if (!foodName) return;
-    const entry = {
-      id: Date.now(),
-      date: todayStr(),
-      name: foodName,
-      cals: parseFloat(foodCals) || 0,
-      prot: parseFloat(foodProt) || 0,
-      carbs: parseFloat(foodCarbs) || 0,
-    };
-    const next = [...nutritionLog, entry];
-    setNutritionLog(next);
-    ls_set(NUTRITION_KEY, next);
-    setFoodName(""); setFoodCals(""); setFoodProt(""); setFoodCarbs("");
-  }
-  function handleDeleteFood(id) {
-    const next = nutritionLog.filter(e => e.id !== id);
-    setNutritionLog(next);
-    ls_set(NUTRITION_KEY, next);
-  }
-
-  const progDayData = workoutDays[progDay];
-  const progEx = progDayData.exercises[progExIdx];
-  const progSessions = log
-    .filter(e => e.day === progDayData.day && e.exerciseName === progEx.name)
-    .slice(-3);
-  const coaching = getCoaching(log.filter(e => e.day === progDayData.day && e.exerciseName === progEx.name));
-
-  const inputStyle = {
-    background: "#060d14",
-    border: "1px solid #1e2a3a",
-    borderRadius: "8px",
-    color: "#e2e8f0",
-    fontFamily: "'Inter', sans-serif",
-    fontSize: "15px",
-    fontWeight: "600",
-    padding: "10px 12px",
-    width: "100%",
-    boxSizing: "border-box",
-    outline: "none",
-  };
-  const selectStyle = { ...inputStyle, cursor: "pointer", appearance: "none", WebkitAppearance: "none" };
-  const smallInput = { ...inputStyle, fontSize: "14px", padding: "9px 10px" };
-
-  const subViews = [
-    { key: "log", label: "Log Workout" },
-    { key: "progress", label: "Progress" },
-    { key: "bodyweight", label: "Body Weight" },
-    { key: "nutrition", label: "Nutrition" },
-  ];
-
-  return (
-    <div>
-      {/* Sub-tab row */}
-      <div style={{
-        display: "flex", gap: "4px", background: "#0a1118",
-        borderRadius: "10px", padding: "4px", border: "1px solid #1e2a3a",
-        marginBottom: "20px", flexWrap: "wrap",
-      }}>
-        {subViews.map(({ key, label }) => {
-          const active = view === key;
-          return (
-            <button
-              key={key}
-              onClick={() => setView(key)}
-              style={{
-                flex: "1 1 auto", padding: "8px 6px", borderRadius: "7px", border: "none",
-                background: active ? "linear-gradient(135deg, #1d4ed8, #3b82f6)" : "transparent",
-                color: active ? "#fff" : "#6b7a8d",
-                fontFamily: "'Inter', sans-serif", fontWeight: "700", fontSize: "11px",
-                cursor: "pointer", transition: "all 0.2s", whiteSpace: "nowrap",
-              }}
-            >{label}</button>
-          );
-        })}
-      </div>
-
-      {/* ══ LOG WORKOUT ══ */}
-      {view === "log" && (
-        <div>
-          <div style={{
-            background: "#0a1827", border: "1px solid #1e3a5f", borderRadius: "8px",
-            padding: "9px 13px", marginBottom: "18px", display: "flex", alignItems: "center", gap: "8px",
-          }}>
-            <div style={{ width: "6px", height: "6px", borderRadius: "50%", background: "#3b82f6", flexShrink: 0 }} />
-            <div style={{ color: "#4a7a9b", fontSize: "12px" }}>Your entries auto-save as you type — nothing is lost until you hit Save Session.</div>
-          </div>
-
-          <div style={{ marginBottom: "14px" }}>
-            <div style={{ color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "8px" }}>Workout Day</div>
-            <div style={{ position: "relative" }}>
-              <select value={selectedDay} onChange={e => setSelectedDay(+e.target.value)} style={selectStyle}>
-                {workoutDays.map((w, i) => <option key={i} value={i} style={{ background: "#0a1118" }}>{w.label}</option>)}
-              </select>
-              <div style={{ position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)", color: "#3b82f6", pointerEvents: "none", fontSize: "12px" }}>▼</div>
-            </div>
-          </div>
-
-          <div style={{ marginBottom: "20px" }}>
-            <div style={{ color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "8px" }}>Exercise</div>
-            <div style={{ position: "relative" }}>
-              <select value={selectedExIdx} onChange={e => setSelectedExIdx(+e.target.value)} style={selectStyle}>
-                {dayData.exercises.map((ex, i) => <option key={i} value={i} style={{ background: "#0a1118" }}>{ex.name}</option>)}
-              </select>
-              <div style={{ position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)", color: "#3b82f6", pointerEvents: "none", fontSize: "12px" }}>▼</div>
-            </div>
-          </div>
-
-          <div style={{ background: "#0a1118", border: "1px solid #1e2a3a", borderRadius: "10px", padding: "12px 14px", marginBottom: "20px" }}>
-            <div style={{ color: "#93c5fd", fontWeight: "700", fontSize: "13px", marginBottom: "2px" }}>{exercise.name}</div>
-            <div style={{ color: "#4a7a9b", fontSize: "12px" }}>{exercise.muscles} · {exercise.sets}</div>
-          </div>
-
-          <div style={{ marginBottom: "16px" }}>
-            <div style={{ color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "12px" }}>Sets</div>
-            <div style={{ display: "grid", gridTemplateColumns: "32px 1fr 1fr 32px", gap: "8px", marginBottom: "8px", padding: "0 2px" }}>
-              <div />
-              <div style={{ color: "#4a5a6a", fontSize: "11px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: "center" }}>Weight (lbs)</div>
-              <div style={{ color: "#4a5a6a", fontSize: "11px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: "center" }}>Reps</div>
-              <div />
-            </div>
-            {sets.map((s, i) => (
-              <div key={i} style={{ display: "grid", gridTemplateColumns: "32px 1fr 1fr 32px", gap: "8px", marginBottom: "8px", alignItems: "center" }}>
-                <div style={{ width: "28px", height: "28px", borderRadius: "50%", background: "#0a1118", border: "1px solid #1e2a3a", display: "flex", alignItems: "center", justifyContent: "center", color: "#3b82f6", fontWeight: "700", fontSize: "12px" }}>{i + 1}</div>
-                <input type="number" inputMode="decimal" placeholder="e.g. 80" value={s.weight} onChange={e => updateSet(i, "weight", e.target.value)} style={inputStyle} />
-                <input type="number" inputMode="numeric" placeholder="12" value={s.reps} onChange={e => updateSet(i, "reps", e.target.value)} style={inputStyle} />
-                <button onClick={() => removeSet(i)} style={{ width: "28px", height: "28px", borderRadius: "50%", background: "#0a1118", border: "1px solid #1e2a3a", color: "#6b7a8d", cursor: "pointer", fontSize: "14px", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>×</button>
-              </div>
-            ))}
-            <button onClick={addSet} style={{ width: "100%", padding: "10px", borderRadius: "8px", background: "transparent", border: "1px dashed #1e2a3a", color: "#4a7a9b", fontFamily: "'Inter', sans-serif", fontSize: "13px", fontWeight: "600", cursor: "pointer", marginTop: "4px" }}>+ Add Set</button>
-          </div>
-
-          <div style={{ color: "#4a5a6a", fontSize: "12px", marginBottom: "14px", textAlign: "center" }}>Logging for: <span style={{ color: "#6b7a8d" }}>{todayStr()}</span></div>
-
-          <button onClick={handleSave} style={{
-            width: "100%", padding: "14px", borderRadius: "12px", border: "none",
-            background: saved ? "linear-gradient(135deg, #166534, #15803d)" : "linear-gradient(135deg, #1d4ed8, #3b82f6)",
-            color: "#fff", fontFamily: "'Inter', sans-serif", fontSize: "15px", fontWeight: "800", cursor: "pointer",
-            boxShadow: saved ? "0 4px 16px #22c55e30" : "0 4px 16px #3b82f640", transition: "all 0.3s",
-          }}>
-            {saved ? "✓ Saved to History!" : "Save Session"}
-          </button>
-
-          {log.length > 0 && (
-            <div style={{ marginTop: "28px" }}>
-              <div style={{ color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "14px" }}>Recent Entries</div>
-              {[...log].reverse().slice(0, 8).map(entry => (
-                <div key={entry.id} style={{ background: "#0a1118", border: "1px solid #1e2a3a", borderRadius: "10px", padding: "14px", marginBottom: "8px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
-                    <div>
-                      <div style={{ color: "#e2e8f0", fontWeight: "700", fontSize: "14px" }}>{entry.exerciseName}</div>
-                      <div style={{ color: "#4a7a9b", fontSize: "12px", marginTop: "2px" }}>{entry.day} · {entry.date}</div>
-                    </div>
-                    <button onClick={() => handleDeleteEntry(entry.id)} style={{ background: "transparent", border: "none", color: "#4a5a6a", cursor: "pointer", fontSize: "14px", padding: "2px 6px" }}>×</button>
-                  </div>
-                  <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                    {entry.sets.map((s, i) => (
-                      <div key={i} style={{ background: "#060d14", border: "1px solid #1e2a3a", borderRadius: "6px", padding: "5px 9px", color: "#93c5fd", fontSize: "12px", fontWeight: "600" }}>
-                        S{i + 1}: {s.weight}lb × {s.reps}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ══ PROGRESS ══ */}
-      {view === "progress" && (
-        <div>
-          <div style={{ color: "#6b7a8d", fontSize: "13px", marginBottom: "20px", lineHeight: "1.5" }}>Pick an exercise to see your last sessions and exactly what to do next time.</div>
-
-          <div style={{ marginBottom: "14px" }}>
-            <div style={{ color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "8px" }}>Workout Day</div>
-            <div style={{ position: "relative" }}>
-              <select value={progDay} onChange={e => { setProgDay(+e.target.value); setProgExIdx(0); }} style={selectStyle}>
-                {workoutDays.map((w, i) => <option key={i} value={i} style={{ background: "#0a1118" }}>{w.label}</option>)}
-              </select>
-              <div style={{ position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)", color: "#3b82f6", pointerEvents: "none", fontSize: "12px" }}>▼</div>
-            </div>
-          </div>
-
-          <div style={{ marginBottom: "20px" }}>
-            <div style={{ color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "8px" }}>Exercise</div>
-            <div style={{ position: "relative" }}>
-              <select value={progExIdx} onChange={e => setProgExIdx(+e.target.value)} style={selectStyle}>
-                {progDayData.exercises.map((ex, i) => <option key={i} value={i} style={{ background: "#0a1118" }}>{ex.name}</option>)}
-              </select>
-              <div style={{ position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)", color: "#3b82f6", pointerEvents: "none", fontSize: "12px" }}>▼</div>
-            </div>
-          </div>
-
-          {progSessions.length === 0 ? (
-            <div style={{ background: "#0f1923", border: "1px solid #1e2a3a", borderRadius: "14px", padding: "32px 20px", textAlign: "center" }}>
-              <div style={{ fontSize: "32px", marginBottom: "12px" }}>📋</div>
-              <div style={{ color: "#e2e8f0", fontWeight: "700", fontSize: "15px", marginBottom: "6px" }}>No sessions logged yet</div>
-              <div style={{ color: "#6b7a8d", fontSize: "13px" }}>Log a session in the Log Workout tab and your progress will appear here.</div>
-            </div>
-          ) : (
-            <div>
-              <div style={{ color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "12px" }}>
-                Last {progSessions.length} Session{progSessions.length > 1 ? "s" : ""}
-              </div>
-
-              <div style={{ display: "grid", gridTemplateColumns: `repeat(${progSessions.length}, 1fr)`, gap: "8px", marginBottom: "20px" }}>
-                {progSessions.map((session, si) => {
-                  const isLatest = si === progSessions.length - 1;
-                  const totalVol = session.sets.reduce((a, s) => a + s.weight * s.reps, 0);
-                  return (
-                    <div key={session.id} style={{
-                      background: isLatest ? "linear-gradient(135deg, #0f1f3d, #0a1827)" : "#0a1118",
-                      border: isLatest ? "1px solid #3b82f650" : "1px solid #1e2a3a",
-                      borderRadius: "12px", padding: "14px 12px",
-                    }}>
-                      <div style={{ color: isLatest ? "#93c5fd" : "#4a7a9b", fontSize: "10px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "8px" }}>
-                        {isLatest ? "Latest" : `${progSessions.length - si} ago`}
-                      </div>
-                      <div style={{ color: "#6b7a8d", fontSize: "10px", marginBottom: "8px" }}>{session.date}</div>
-                      {session.sets.map((s, i) => (
-                        <div key={i} style={{ display: "flex", justifyContent: "space-between", marginBottom: "5px", alignItems: "center" }}>
-                          <div style={{ color: "#4a5a6a", fontSize: "11px" }}>S{i + 1}</div>
-                          <div style={{ color: isLatest ? "#e2e8f0" : "#6b7a8d", fontWeight: "700", fontSize: "13px" }}>{s.weight}<span style={{ color: "#4a5a6a", fontWeight: "400", fontSize: "10px" }}> lb</span></div>
-                          <div style={{ color: isLatest ? "#93c5fd" : "#4a7a9b", fontWeight: "700", fontSize: "13px" }}>×{s.reps}</div>
-                        </div>
-                      ))}
-                      <div style={{ marginTop: "10px", paddingTop: "8px", borderTop: "1px solid #1e2a3a" }}>
-                        <div style={{ color: "#4a5a6a", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.06em" }}>Volume</div>
-                        <div style={{ color: isLatest ? "#3b82f6" : "#4a7a9b", fontWeight: "700", fontSize: "13px" }}>{totalVol.toLocaleString()} lb</div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {coaching && (
-                <div style={{ background: `${coaching.adviceColor}12`, border: `1px solid ${coaching.adviceColor}40`, borderRadius: "14px", padding: "18px", marginBottom: "16px" }}>
-                  <div style={{ display: "flex", gap: "10px", alignItems: "flex-start" }}>
-                    <div style={{ fontSize: "22px", flexShrink: 0 }}>{coaching.adviceIcon}</div>
-                    <div>
-                      <div style={{ color: coaching.adviceColor, fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "6px" }}>Next Session</div>
-                      <div style={{ color: "#e2e8f0", fontWeight: "700", fontSize: "15px", lineHeight: "1.4" }}>{coaching.advice}</div>
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {coaching?.stuck && (
-                <div style={{ background: "#2d1a0a", border: "1px solid #f59e0b50", borderRadius: "14px", padding: "16px 18px" }}>
-                  <div style={{ color: "#f59e0b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "8px" }}>⚠️ Stuck at {coaching.lastWeight} lbs for 3+ sessions</div>
-                  <div style={{ color: "#b0bec5", fontSize: "13px", lineHeight: "1.5" }}><span style={{ color: "#fbbf24", fontWeight: "700" }}>Try this: </span>{coaching.stuckTip}</div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ══ BODY WEIGHT ══ */}
-      {view === "bodyweight" && (
-        <div>
-          <div style={{ color: "#6b7a8d", fontSize: "13px", marginBottom: "20px", lineHeight: "1.5" }}>Log your bodyweight and set a goal to keep it in view.</div>
-
-          <div style={{ background: "#0f1923", border: "1px solid #1e3a5f", borderRadius: "14px", padding: "18px", marginBottom: "20px" }}>
-            <div style={{ color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "12px" }}>🎯 Goal Weight</div>
-            {goalWeight && (
-              <div style={{ background: "#0a1827", border: "1px solid #3b82f640", borderRadius: "10px", padding: "12px 16px", marginBottom: "14px", display: "flex", alignItems: "baseline", gap: "6px" }}>
-                <span style={{ color: "#3b82f6", fontSize: "28px", fontWeight: "900", letterSpacing: "-0.03em" }}>{goalWeight}</span>
-                <span style={{ color: "#4a7a9b", fontSize: "14px", fontWeight: "600" }}>lbs</span>
-                {bwLog.length > 0 && (() => {
-                  const latest = bwLog[bwLog.length - 1].weight;
-                  const diff = (latest - parseFloat(goalWeight)).toFixed(1);
-                  const isAbove = parseFloat(diff) > 0;
-                  return (
-                    <span style={{ marginLeft: "auto", color: isAbove ? "#f59e0b" : "#22c55e", fontSize: "13px", fontWeight: "700" }}>
-                      {isAbove ? `${diff} lbs to go` : "✓ Goal reached!"}
-                    </span>
-                  );
-                })()}
-              </div>
-            )}
-            <div style={{ display: "flex", gap: "8px" }}>
-              <input type="number" inputMode="decimal" placeholder="Enter goal weight (lbs)" value={goalInput} onChange={e => setGoalInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSaveGoal()} style={{ ...smallInput, flex: 1 }} />
-              <button onClick={handleSaveGoal} style={{ padding: "9px 16px", borderRadius: "8px", border: "none", background: goalSaved ? "linear-gradient(135deg, #166534, #15803d)" : "linear-gradient(135deg, #1d4ed8, #3b82f6)", color: "#fff", fontFamily: "'Inter', sans-serif", fontWeight: "700", fontSize: "13px", cursor: "pointer", whiteSpace: "nowrap" }}>
-                {goalSaved ? "✓ Saved" : "Set Goal"}
-              </button>
-            </div>
-          </div>
-
-          <div style={{ marginBottom: "20px" }}>
-            <div style={{ color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "10px" }}>Log Today's Weight</div>
-            <div style={{ display: "flex", gap: "8px" }}>
-              <input type="number" inputMode="decimal" placeholder="e.g. 165" value={bwInput} onChange={e => setBwInput(e.target.value)} onKeyDown={e => e.key === "Enter" && handleLogWeight()} style={{ ...smallInput, flex: 1 }} />
-              <button onClick={handleLogWeight} style={{ padding: "9px 16px", borderRadius: "8px", border: "none", background: "linear-gradient(135deg, #1d4ed8, #3b82f6)", color: "#fff", fontFamily: "'Inter', sans-serif", fontWeight: "700", fontSize: "13px", cursor: "pointer" }}>Log</button>
-            </div>
-            <div style={{ color: "#4a5a6a", fontSize: "11px", marginTop: "6px" }}>Date: {todayStr()}</div>
-          </div>
-
-          {bwLog.length > 0 ? (
-            <div>
-              <div style={{ color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "12px" }}>History</div>
-              {[...bwLog].reverse().map((entry, i) => {
-                const origIdx = bwLog.length - 1 - i;
-                const prev = origIdx > 0 ? bwLog[origIdx - 1] : null;
-                const delta = prev ? (entry.weight - prev.weight).toFixed(1) : null;
-                const isDown = delta !== null && parseFloat(delta) < 0;
-                const isUp = delta !== null && parseFloat(delta) > 0;
-                return (
-                  <div key={entry.id} style={{ background: "#0a1118", border: "1px solid #1e2a3a", borderRadius: "10px", padding: "12px 14px", marginBottom: "8px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <div>
-                      <div style={{ color: "#e2e8f0", fontWeight: "800", fontSize: "20px", letterSpacing: "-0.02em" }}>{entry.weight} <span style={{ fontSize: "13px", fontWeight: "500", color: "#4a7a9b" }}>lbs</span></div>
-                      <div style={{ color: "#4a5a6a", fontSize: "12px", marginTop: "2px" }}>{entry.date}</div>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                      {delta !== null && (
-                        <div style={{ color: isDown ? "#22c55e" : isUp ? "#f87171" : "#6b7a8d", fontWeight: "700", fontSize: "14px" }}>
-                          {isDown ? "▼" : isUp ? "▲" : "–"} {Math.abs(parseFloat(delta))} lbs
-                        </div>
-                      )}
-                      <button onClick={() => handleDeleteBw(entry.id)} style={{ background: "transparent", border: "none", color: "#4a5a6a", cursor: "pointer", fontSize: "14px", padding: "2px 6px" }}>×</button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div style={{ background: "#0f1923", border: "1px solid #1e2a3a", borderRadius: "12px", padding: "28px 20px", textAlign: "center" }}>
-              <div style={{ fontSize: "28px", marginBottom: "10px" }}>⚖️</div>
-              <div style={{ color: "#6b7a8d", fontSize: "13px" }}>No entries yet. Log your first weigh-in above.</div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ══ NUTRITION ══ */}
-      {view === "nutrition" && (
-        <div>
-          <div style={{ background: "linear-gradient(135deg, #0a1827, #0f1923)", border: "1px solid #1e3a5f", borderRadius: "14px", padding: "18px", marginBottom: "20px" }}>
-            <div style={{ color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "14px" }}>Today's Totals — {todayStr()}</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px" }}>
-              {[["Calories", totalCals, "kcal", "#f59e0b"], ["Protein", totalProt, "g", "#22c55e"], ["Carbs", totalCarbs, "g", "#3b82f6"]].map(([label, val, unit, color]) => (
-                <div key={label} style={{ background: "#060d14", borderRadius: "10px", padding: "12px 10px", border: `1px solid ${color}30`, textAlign: "center" }}>
-                  <div style={{ color, fontSize: "22px", fontWeight: "900", letterSpacing: "-0.02em" }}>{val}</div>
-                  <div style={{ color: "#4a5a6a", fontSize: "10px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.06em" }}>{unit}</div>
-                  <div style={{ color: "#4a7a9b", fontSize: "10px", marginTop: "2px" }}>{label}</div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ background: "#0f1923", border: "1px solid #1e2a3a", borderRadius: "14px", padding: "18px", marginBottom: "20px" }}>
-            <div style={{ color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "14px" }}>+ Log Food</div>
-            <div style={{ marginBottom: "10px" }}>
-              <input type="text" placeholder="Food name (e.g. Grilled Chicken)" value={foodName} onChange={e => setFoodName(e.target.value)} onKeyDown={e => e.key === "Enter" && handleAddFood()} style={smallInput} />
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", marginBottom: "14px" }}>
-              <div>
-                <div style={{ color: "#4a5a6a", fontSize: "10px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "5px" }}>Calories</div>
-                <input type="number" inputMode="numeric" placeholder="kcal" value={foodCals} onChange={e => setFoodCals(e.target.value)} style={smallInput} />
-              </div>
-              <div>
-                <div style={{ color: "#4a5a6a", fontSize: "10px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "5px" }}>Protein (g)</div>
-                <input type="number" inputMode="numeric" placeholder="g" value={foodProt} onChange={e => setFoodProt(e.target.value)} style={smallInput} />
-              </div>
-              <div>
-                <div style={{ color: "#4a5a6a", fontSize: "10px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "5px" }}>Carbs (g)</div>
-                <input type="number" inputMode="numeric" placeholder="g" value={foodCarbs} onChange={e => setFoodCarbs(e.target.value)} style={smallInput} />
-              </div>
-            </div>
-            <button onClick={handleAddFood} style={{ width: "100%", padding: "12px", borderRadius: "10px", border: "none", background: "linear-gradient(135deg, #1d4ed8, #3b82f6)", color: "#fff", fontFamily: "'Inter', sans-serif", fontWeight: "800", fontSize: "14px", cursor: "pointer" }}>Add Food</button>
-          </div>
-
-          {todayNutrition.length > 0 && (
-            <div style={{ marginBottom: "20px" }}>
-              <div style={{ color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "12px" }}>Today's Log</div>
-              {[...todayNutrition].reverse().map(entry => (
-                <div key={entry.id} style={{ background: "#0a1118", border: "1px solid #1e2a3a", borderRadius: "10px", padding: "12px 14px", marginBottom: "8px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" }}>
-                    <div style={{ color: "#e2e8f0", fontWeight: "700", fontSize: "14px" }}>{entry.name}</div>
-                    <button onClick={() => handleDeleteFood(entry.id)} style={{ background: "transparent", border: "none", color: "#4a5a6a", cursor: "pointer", fontSize: "14px", padding: "2px 6px" }}>×</button>
-                  </div>
-                  <div style={{ display: "flex", gap: "8px" }}>
-                    {[[entry.cals, "Cals", "#f59e0b"], [`${entry.prot}g`, "Protein", "#22c55e"], [`${entry.carbs}g`, "Carbs", "#3b82f6"]].map(([v, l, c]) => (
-                      <div key={l} style={{ background: "#060d14", border: `1px solid ${c}25`, borderRadius: "6px", padding: "4px 9px" }}>
-                        <span style={{ color: c, fontWeight: "700", fontSize: "12px" }}>{v}</span>
-                        <span style={{ color: "#4a5a6a", fontSize: "11px" }}> {l}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {nutritionLog.filter(e => e.date !== todayStr()).length > 0 && (() => {
-            const pastDates = [...new Set(nutritionLog.filter(e => e.date !== todayStr()).map(e => e.date))].slice(-5).reverse();
-            return (
-              <div>
-                <div style={{ color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "12px" }}>Previous Days</div>
-                {pastDates.map(date => {
-                  const de = nutritionLog.filter(e => e.date === date);
-                  const dC = de.reduce((a, e) => a + e.cals, 0);
-                  const dP = de.reduce((a, e) => a + e.prot, 0);
-                  const dCb = de.reduce((a, e) => a + e.carbs, 0);
-                  return (
-                    <div key={date} style={{ background: "#0a1118", border: "1px solid #1e2a3a", borderRadius: "10px", padding: "12px 14px", marginBottom: "8px" }}>
-                      <div style={{ color: "#6b7a8d", fontSize: "12px", fontWeight: "600", marginBottom: "8px" }}>{date} · {de.length} items</div>
-                      <div style={{ display: "flex", gap: "8px" }}>
-                        {[[dC, "Cals", "#f59e0b"], [`${dP}g`, "Protein", "#22c55e"], [`${dCb}g`, "Carbs", "#3b82f6"]].map(([v, l, c]) => (
-                          <div key={l} style={{ background: "#060d14", border: `1px solid ${c}25`, borderRadius: "6px", padding: "4px 9px" }}>
-                            <span style={{ color: c, fontWeight: "700", fontSize: "12px" }}>{v}</span>
-                            <span style={{ color: "#4a5a6a", fontSize: "11px" }}> {l}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          })()}
-
-          {nutritionLog.length === 0 && (
-            <div style={{ background: "#0f1923", border: "1px solid #1e2a3a", borderRadius: "12px", padding: "28px 20px", textAlign: "center" }}>
-              <div style={{ fontSize: "28px", marginBottom: "10px" }}>🥗</div>
-              <div style={{ color: "#6b7a8d", fontSize: "13px" }}>No food logged yet. Add your first entry above.</div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── MAIN APP ─────────────────────────────────────────────────────────────────
-
-function GymGuide() {
-  const [activeTab, setActiveTab] = useState(0);
-  const [selectedPhase, setSelectedPhase] = useState(0);
-
-  const tabs = ["Workout Plan", "Progression", "Tips", "Tracker"];
-
-  return (
-    <div style={{
-      minHeight: "100vh",
-      background: "#060d14",
-      color: "#e2e8f0",
-      fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
-      maxWidth: "540px",
-      margin: "0 auto",
-      padding: "0 0 60px",
-    }}>
-      {/* Header */}
-      <div style={{
-        background: "linear-gradient(180deg, #0a1827 0%, #060d14 100%)",
-        padding: "32px 20px 24px",
-        borderBottom: "1px solid #1e2a3a",
-        position: "sticky",
-        top: 0,
-        zIndex: 10,
-      }}>
-        <div style={{ marginBottom: "4px" }}>
-          <span style={{
-            background: "linear-gradient(90deg, #3b82f6, #1d4ed8)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-            fontSize: "11px",
-            fontWeight: "800",
-            letterSpacing: "0.15em",
-            textTransform: "uppercase",
-          }}>Planet Fitness · 5-Day Split</span>
-        </div>
-        <h1 style={{
-          fontSize: "26px",
-          fontWeight: "900",
-          letterSpacing: "-0.04em",
-          margin: "0 0 20px",
-          lineHeight: 1.1,
-          color: "#f0f6ff",
-        }}>Your Gym Guide</h1>
-
-        {/* Tabs */}
-        <div style={{
-          display: "flex",
-          gap: "4px",
-          background: "#0a1118",
-          borderRadius: "12px",
-          padding: "4px",
-          border: "1px solid #1e2a3a",
-        }}>
-          {tabs.map((tab, i) => (
-            <button
-              key={i}
-              onClick={() => setActiveTab(i)}
-              style={{
-                flex: 1,
-                padding: "9px 4px",
-                borderRadius: "9px",
+    const [open, setOpen] = useState(false);
+    return (React.createElement("div", { style: {
+            background: "#0a1118",
+            border: open ? `1px solid ${accent}60` : "1px solid #1e2a3a",
+            borderRadius: "12px",
+            marginBottom: "10px",
+            overflow: "hidden",
+            transition: "border-color 0.2s",
+        } },
+        React.createElement("button", { onClick: () => setOpen(!open), style: {
+                width: "100%",
+                padding: "16px",
+                background: "transparent",
                 border: "none",
-                background: activeTab === i ? "linear-gradient(135deg, #1d4ed8, #3b82f6)" : "transparent",
-                color: activeTab === i ? "#fff" : "#6b7a8d",
-                fontFamily: "'Inter', sans-serif",
-                fontWeight: activeTab === i ? "700" : "500",
-                fontSize: "11px",
                 cursor: "pointer",
-                transition: "all 0.2s",
-                boxShadow: activeTab === i ? "0 2px 8px #3b82f640" : "none",
-              }}
-            >{tab}</button>
-          ))}
-        </div>
-      </div>
-
-      <div style={{ padding: "20px" }}>
-
-        {/* ── TAB 0: WORKOUT PLAN ── */}
-        {activeTab === 0 && (
-          <div>
-            <div style={{ marginBottom: "20px" }}>
-              <div style={{ color: "#6b7a8d", fontSize: "13px", lineHeight: "1.5" }}>
-                Tap a day to see your exercises. Tap any exercise to expand form cues and tips.
-              </div>
-            </div>
-            {workoutDays.map((w, i) => (
-              <DayCard key={i} workout={w} />
-            ))}
-          </div>
-        )}
-
-        {/* ── TAB 1: PROGRESSION ── */}
-        {activeTab === 1 && (
-          <div>
-            <div style={{ marginBottom: "20px" }}>
-              <div style={{ color: "#6b7a8d", fontSize: "13px", lineHeight: "1.5" }}>
-                An 8-week roadmap to build strength, intensity, and muscle. Select a phase below.
-              </div>
-            </div>
-            <WeekSelector selected={selectedPhase} onSelect={setSelectedPhase} />
-            <PhaseCard phase={phases[selectedPhase]} />
-
-            <div style={{
-              background: "#0f1923",
-              border: "1px solid #1e2a3a",
-              borderRadius: "14px",
-              padding: "20px",
-              marginBottom: "16px",
-            }}>
-              <div style={{ color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "14px" }}>What to focus on this phase</div>
-
-              {selectedPhase === 0 && (
-                <div>
-                  {["Log every workout. Note the machine, weight, and how it felt.", "Don't chase soreness — soreness ≠ growth. Chase good form.", "Ask a staff member to help you set up each machine correctly.", "Aim to feel each muscle working, not just moving the weight.", "End every session with 5 min of stretching the muscles you trained."].map((t, i) => (
-                    <div key={i} style={{ display: "flex", gap: "10px", marginBottom: "10px" }}>
-                      <div style={{ color: "#3b82f6", fontWeight: "700", fontSize: "13px", flexShrink: 0 }}>0{i + 1}</div>
-                      <div style={{ color: "#b0bec5", fontSize: "13px", lineHeight: "1.5" }}>{t}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {selectedPhase === 1 && (
-                <div>
-                  {["Add one set to every exercise compared to Weeks 1–2.", "Increase weight by 5 lbs on machines where Week 1–2 felt manageable.", "Start a simple log: exercise, weight, reps. Review it before every session.", "Begin timing your rest periods. 75 seconds goes faster than you think.", "Your form should now feel automatic on your main lifts. Start pushing harder."].map((t, i) => (
-                    <div key={i} style={{ display: "flex", gap: "10px", marginBottom: "10px" }}>
-                      <div style={{ color: "#2563eb", fontWeight: "700", fontSize: "13px", flexShrink: 0 }}>0{i + 1}</div>
-                      <div style={{ color: "#b0bec5", fontSize: "13px", lineHeight: "1.5" }}>{t}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {selectedPhase === 2 && (
-                <div>
-                  {["Your last 2 reps of every set should feel genuinely hard.", "Increase weight on any exercise that felt too easy in Week 3–4.", "Shorten rest to 60 sec — this builds muscular endurance alongside size.", "Add a mind-muscle connection focus: slow down the eccentric (lowering) phase.", "Cardio intensity goes up too — increase treadmill speed or stair pace."].map((t, i) => (
-                    <div key={i} style={{ display: "flex", gap: "10px", marginBottom: "10px" }}>
-                      <div style={{ color: "#1d4ed8", fontWeight: "700", fontSize: "13px", flexShrink: 0 }}>0{i + 1}</div>
-                      <div style={{ color: "#b0bec5", fontSize: "13px", lineHeight: "1.5" }}>{t}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {selectedPhase === 3 && (
-                <div>
-                  {["Drop sets: on your last exercise each day, do your working weight × 10, then immediately drop 20–30% and do 8 more. No rest.", "This is peak week. Push. You've built the foundation — now use it.", "Take progress photos on Day 56. Compare to Day 1.", "Plan your Week 9 program — start the cycle again with heavier baseline weights.", "Celebrate the consistency. Most people don't make it 8 weeks."].map((t, i) => (
-                    <div key={i} style={{ display: "flex", gap: "10px", marginBottom: "10px" }}>
-                      <div style={{ color: "#1e40af", fontWeight: "700", fontSize: "13px", flexShrink: 0 }}>0{i + 1}</div>
-                      <div style={{ color: "#b0bec5", fontSize: "13px", lineHeight: "1.5" }}>{t}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div style={{
-              background: "#0f1923",
-              border: "1px solid #1e2a3a",
-              borderRadius: "14px",
-              padding: "20px",
-            }}>
-              <div style={{ color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "16px" }}>8-Week Progress Arc</div>
-              <div style={{ display: "flex", gap: "6px", alignItems: "flex-end", height: "60px" }}>
-                {[40, 50, 60, 65, 72, 78, 84, 90].map((h, i) => (
-                  <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
-                    <div style={{
-                      width: "100%",
-                      height: `${h * 0.6}px`,
-                      borderRadius: "4px 4px 2px 2px",
-                      background: i < (selectedPhase + 1) * 2
-                        ? `linear-gradient(180deg, #3b82f6, #1d4ed8)`
-                        : "#1e2a3a",
-                      transition: "background 0.3s",
-                    }} />
-                    <div style={{ color: "#4a5a6a", fontSize: "9px" }}>W{i + 1}</div>
-                  </div>
-                ))}
-              </div>
-              <div style={{ marginTop: "12px", color: "#6b7a8d", fontSize: "12px" }}>Estimated training intensity over 8 weeks</div>
-            </div>
-          </div>
-        )}
-
-        {/* ── TAB 2: TIPS ── */}
-        {activeTab === 2 && (
-          <div>
-            <div style={{ marginBottom: "20px" }}>
-              <div style={{ color: "#6b7a8d", fontSize: "13px", lineHeight: "1.5" }}>
-                The habits that separate lifters who transform from those who plateau. Tap each one.
-              </div>
-            </div>
-
-            <div style={{
-              background: "linear-gradient(135deg, #1d4ed820, #3b82f615)",
-              border: "1px solid #3b82f630",
-              borderRadius: "14px",
-              padding: "18px",
-              marginBottom: "20px",
-              display: "flex",
-              gap: "12px",
-              alignItems: "flex-start",
-            }}>
-              <div style={{ fontSize: "28px" }}>🎯</div>
-              <div>
-                <div style={{ color: "#93c5fd", fontWeight: "800", fontSize: "15px", marginBottom: "4px" }}>The Real Secret</div>
-                <div style={{ color: "#94a3b8", fontSize: "13px", lineHeight: "1.5" }}>
-                  The gym is 30% of the equation. Sleep, protein, and consistency are the other 70%. Master those and the results are unavoidable.
-                </div>
-              </div>
-            </div>
-
-            {tips.map((tip, i) => (
-              <TipCard key={i} tip={tip} />
-            ))}
-
-            <div style={{
-              marginTop: "24px",
-              padding: "20px",
-              background: "linear-gradient(135deg, #0a1827, #0f1923)",
-              border: "1px solid #1e2a3a",
-              borderRadius: "14px",
-              textAlign: "center",
-            }}>
-              <div style={{ fontSize: "24px", marginBottom: "10px" }}>💪</div>
-              <div style={{ color: "#e2e8f0", fontWeight: "800", fontSize: "16px", marginBottom: "6px" }}>You started at 15.</div>
-              <div style={{ color: "#6b7a8d", fontSize: "13px", lineHeight: "1.6" }}>
-                Most people wish they'd started younger. You're already ahead. Now just don't stop.
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* ── TAB 3: TRACKER ── */}
-        {activeTab === 3 && <TrackerTab />}
-
-      </div>
-    </div>
-  );
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                color: "#e2e8f0",
+                fontFamily: "'Inter', sans-serif",
+                textAlign: "left",
+            } },
+            React.createElement("div", null,
+                React.createElement("div", { style: { fontWeight: "700", fontSize: "15px", marginBottom: "4px" } }, exercise.name),
+                React.createElement("div", { style: { fontSize: "12px", color: "#4a7a9b" } }, exercise.muscles)),
+            React.createElement("div", { style: {
+                    width: "28px", height: "28px", borderRadius: "50%",
+                    background: open ? `${accent}22` : "#111d2b",
+                    border: `1px solid ${open ? accent : "#1e2a3a"}`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    color: open ? accent : "#6b7a8d",
+                    fontSize: "16px",
+                    flexShrink: 0,
+                    transition: "all 0.2s",
+                    transform: open ? "rotate(45deg)" : "none",
+                } }, "+")),
+        open && (React.createElement("div", { style: { padding: "0 16px 16px", borderTop: `1px solid ${accent}30` } },
+            React.createElement("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginTop: "14px", marginBottom: "16px" } },
+                React.createElement("div", { style: { background: "#060d14", borderRadius: "8px", padding: "10px 12px", border: "1px solid #1e2a3a" } },
+                    React.createElement("div", { style: { color: "#4a5a6a", fontSize: "10px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "3px" } }, "Sets / Reps"),
+                    React.createElement("div", { style: { color: "#93c5fd", fontWeight: "600", fontSize: "13px" } }, exercise.sets)),
+                React.createElement("div", { style: { background: "#060d14", borderRadius: "8px", padding: "10px 12px", border: "1px solid #1e2a3a" } },
+                    React.createElement("div", { style: { color: "#4a5a6a", fontSize: "10px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "3px" } }, "Rest"),
+                    React.createElement("div", { style: { color: "#93c5fd", fontWeight: "600", fontSize: "13px" } }, exercise.rest))),
+            React.createElement("div", { style: { background: "#060d14", borderRadius: "8px", padding: "10px 12px", border: "1px solid #1e2a3a", marginBottom: "16px" } },
+                React.createElement("div", { style: { color: "#4a5a6a", fontSize: "10px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "3px" } }, "Machine"),
+                React.createElement("div", { style: { color: "#b0bec5", fontSize: "13px" } }, exercise.machine)),
+            React.createElement("div", { style: { marginBottom: "16px" } },
+                React.createElement("div", { style: { color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "10px" } }, "Form Cues"),
+                exercise.form.map((cue, i) => (React.createElement("div", { key: i, style: { display: "flex", gap: "10px", marginBottom: "8px", alignItems: "flex-start" } },
+                    React.createElement("div", { style: {
+                            minWidth: "22px", height: "22px", borderRadius: "50%",
+                            background: `${accent}22`, color: accent,
+                            fontWeight: "700", fontSize: "11px",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            flexShrink: 0, marginTop: "1px",
+                        } }, i + 1),
+                    React.createElement("div", { style: { color: "#b0bec5", fontSize: "13px", lineHeight: "1.5" } }, cue))))),
+            React.createElement("div", { style: {
+                    background: `${accent}12`,
+                    border: `1px solid ${accent}30`,
+                    borderRadius: "8px",
+                    padding: "12px 14px",
+                } },
+                React.createElement("div", { style: { color: accent, fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "6px" } }, "\u26A1 Pro Tip"),
+                React.createElement("div", { style: { color: "#b0bec5", fontSize: "13px", lineHeight: "1.5" } }, exercise.tip))))));
 }
-
+function DayCard({ workout }) {
+    const [open, setOpen] = useState(false);
+    return (React.createElement("div", { style: {
+            background: "#0f1923",
+            border: open ? `1px solid ${workout.accentColor}50` : "1px solid #1e2a3a",
+            borderRadius: "14px",
+            marginBottom: "12px",
+            overflow: "hidden",
+            transition: "border-color 0.2s",
+        } },
+        React.createElement("button", { onClick: () => setOpen(!open), style: {
+                width: "100%",
+                padding: "18px 20px",
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                fontFamily: "'Inter', sans-serif",
+                textAlign: "left",
+            } },
+            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: "14px" } },
+                React.createElement("div", { style: {
+                        width: "44px", height: "44px", borderRadius: "12px",
+                        background: `${workout.accentColor}20`,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: "22px",
+                    } }, workout.icon),
+                React.createElement("div", null,
+                    React.createElement("div", { style: { color: workout.accentColor, fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "3px" } }, "Workout"),
+                    React.createElement("div", { style: { color: "#e2e8f0", fontWeight: "800", fontSize: "18px", letterSpacing: "-0.02em" } }, workout.label))),
+            React.createElement("div", { style: {
+                    padding: "6px 12px", borderRadius: "8px",
+                    background: open ? `${workout.accentColor}22` : "#0a1118",
+                    color: open ? workout.accentColor : "#6b7a8d",
+                    fontSize: "12px", fontWeight: "600",
+                    border: `1px solid ${open ? workout.accentColor + "50" : "#1e2a3a"}`,
+                    transition: "all 0.2s",
+                } }, open ? "Close" : `${workout.exercises.length} exercises`)),
+        open && (React.createElement("div", { style: { padding: "0 16px 16px", borderTop: `1px solid ${workout.accentColor}25` } },
+            React.createElement("div", { style: { marginTop: "16px" } }, workout.exercises.map((ex, i) => (React.createElement(ExerciseCard, { key: i, exercise: ex, accent: workout.accentColor }))))))));
+}
+function TipCard({ tip }) {
+    const [open, setOpen] = useState(false);
+    return (React.createElement("div", { style: {
+            background: "#0f1923",
+            border: open ? `1px solid ${tip.color}50` : "1px solid #1e2a3a",
+            borderRadius: "14px",
+            marginBottom: "12px",
+            overflow: "hidden",
+            transition: "border-color 0.2s",
+        } },
+        React.createElement("button", { onClick: () => setOpen(!open), style: {
+                width: "100%",
+                padding: "18px 20px",
+                background: "transparent",
+                border: "none",
+                cursor: "pointer",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                fontFamily: "'Inter', sans-serif",
+                textAlign: "left",
+            } },
+            React.createElement("div", { style: { display: "flex", alignItems: "center", gap: "14px" } },
+                React.createElement("div", { style: {
+                        width: "42px", height: "42px", borderRadius: "12px",
+                        background: `${tip.color}20`,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: "20px",
+                    } }, tip.icon),
+                React.createElement("div", null,
+                    React.createElement("div", { style: { color: tip.color, fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "3px" } }, tip.category),
+                    React.createElement("div", { style: { color: "#e2e8f0", fontWeight: "700", fontSize: "15px", lineHeight: "1.3" } }, tip.headline))),
+            React.createElement("div", { style: {
+                    minWidth: "28px", height: "28px", borderRadius: "50%",
+                    background: open ? `${tip.color}22` : "#0a1118",
+                    border: `1px solid ${open ? tip.color : "#1e2a3a"}`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    color: open ? tip.color : "#6b7a8d",
+                    fontSize: "18px",
+                    transition: "all 0.2s",
+                    transform: open ? "rotate(45deg)" : "none",
+                    flexShrink: 0,
+                } }, "+")),
+        open && (React.createElement("div", { style: { padding: "0 20px 20px", borderTop: `1px solid ${tip.color}25` } },
+            React.createElement("div", { style: { marginTop: "14px" } }, tip.points.map((pt, i) => (React.createElement("div", { key: i, style: { display: "flex", gap: "12px", marginBottom: "10px", alignItems: "flex-start" } },
+                React.createElement("div", { style: {
+                        width: "6px", height: "6px", borderRadius: "50%",
+                        background: tip.color,
+                        flexShrink: 0, marginTop: "7px",
+                    } }),
+                React.createElement("div", { style: { color: "#b0bec5", fontSize: "14px", lineHeight: "1.6" } }, pt)))))))));
+}
+// ─── TRACKER TAB ─────────────────────────────────────────────────────────────
+function TrackerTab() {
+    const [log, setLog] = useState(() => ls_get(WORKOUT_LOG_KEY, []));
+    const [view, setView] = useState("log"); // log | progress | bodyweight | nutrition
+    // Draft — auto-saved so navigating away never loses in-progress entries
+    const [draft, setDraft] = useState(() => ls_get(DRAFT_KEY, {
+        selectedDay: 0,
+        selectedExIdx: 0,
+        sets: [{ weight: "", reps: "12" }, { weight: "", reps: "12" }, { weight: "", reps: "12" }],
+    }));
+    const { selectedDay, selectedExIdx, sets } = draft;
+    function updateDraft(patch) {
+        setDraft(prev => {
+            const next = { ...prev, ...patch };
+            ls_set(DRAFT_KEY, next);
+            return next;
+        });
+    }
+    function setSelectedDay(v) { updateDraft({ selectedDay: v, selectedExIdx: 0 }); }
+    function setSelectedExIdx(v) { updateDraft({ selectedExIdx: v }); }
+    function setSets(fn) {
+        setDraft(prev => {
+            const nextSets = typeof fn === "function" ? fn(prev.sets) : fn;
+            const next = { ...prev, sets: nextSets };
+            ls_set(DRAFT_KEY, next);
+            return next;
+        });
+    }
+    const [saved, setSaved] = useState(false);
+    const dayData = workoutDays[selectedDay];
+    const exercise = dayData.exercises[selectedExIdx];
+    // Progress view
+    const [progDay, setProgDay] = useState(0);
+    const [progExIdx, setProgExIdx] = useState(0);
+    // Body weight
+    const [bwLog, setBwLog] = useState(() => ls_get(BODYWEIGHT_KEY, []));
+    const [goalWeight, setGoalWeight] = useState(() => ls_get(GOAL_WEIGHT_KEY, ""));
+    const [bwInput, setBwInput] = useState("");
+    const [goalInput, setGoalInput] = useState(() => ls_get(GOAL_WEIGHT_KEY, ""));
+    const [goalSaved, setGoalSaved] = useState(false);
+    // Nutrition
+    const [nutritionLog, setNutritionLog] = useState(() => ls_get(NUTRITION_KEY, []));
+    const [foodName, setFoodName] = useState("");
+    const [foodCals, setFoodCals] = useState("");
+    const [foodProt, setFoodProt] = useState("");
+    const [foodCarbs, setFoodCarbs] = useState("");
+    const todayNutrition = nutritionLog.filter(e => e.date === todayStr());
+    const totalCals = todayNutrition.reduce((a, e) => a + (e.cals || 0), 0);
+    const totalProt = todayNutrition.reduce((a, e) => a + (e.prot || 0), 0);
+    const totalCarbs = todayNutrition.reduce((a, e) => a + (e.carbs || 0), 0);
+    function persistLog(newLog) {
+        setLog(newLog);
+        ls_set(WORKOUT_LOG_KEY, newLog);
+    }
+    function handleSave() {
+        const validSets = sets.filter(s => s.weight !== "" && s.reps !== "");
+        if (!validSets.length)
+            return;
+        const entry = {
+            id: Date.now(),
+            date: todayStr(),
+            day: dayData.day,
+            exerciseName: exercise.name,
+            sets: validSets.map(s => ({ weight: parseFloat(s.weight) || 0, reps: parseInt(s.reps) || 0 })),
+        };
+        persistLog([...log, entry]);
+        setSaved(true);
+        setTimeout(() => setSaved(false), 2000);
+        const cleared = {
+            selectedDay,
+            selectedExIdx,
+            sets: [{ weight: "", reps: "12" }, { weight: "", reps: "12" }, { weight: "", reps: "12" }],
+        };
+        setDraft(cleared);
+        ls_set(DRAFT_KEY, cleared);
+    }
+    function handleDeleteEntry(id) { persistLog(log.filter(e => e.id !== id)); }
+    function addSet() { setSets(prev => [...prev, { weight: "", reps: "12" }]); }
+    function removeSet(i) { setSets(prev => prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev); }
+    function updateSet(i, field, val) { setSets(prev => prev.map((s, idx) => idx === i ? { ...s, [field]: val } : s)); }
+    function handleLogWeight() {
+        if (!bwInput)
+            return;
+        const entry = { id: Date.now(), date: todayStr(), weight: parseFloat(bwInput) };
+        const next = [...bwLog, entry];
+        setBwLog(next);
+        ls_set(BODYWEIGHT_KEY, next);
+        setBwInput("");
+    }
+    function handleSaveGoal() {
+        setGoalWeight(goalInput);
+        ls_set(GOAL_WEIGHT_KEY, goalInput);
+        setGoalSaved(true);
+        setTimeout(() => setGoalSaved(false), 1500);
+    }
+    function handleDeleteBw(id) {
+        const next = bwLog.filter(e => e.id !== id);
+        setBwLog(next);
+        ls_set(BODYWEIGHT_KEY, next);
+    }
+    function handleAddFood() {
+        if (!foodName)
+            return;
+        const entry = {
+            id: Date.now(),
+            date: todayStr(),
+            name: foodName,
+            cals: parseFloat(foodCals) || 0,
+            prot: parseFloat(foodProt) || 0,
+            carbs: parseFloat(foodCarbs) || 0,
+        };
+        const next = [...nutritionLog, entry];
+        setNutritionLog(next);
+        ls_set(NUTRITION_KEY, next);
+        setFoodName("");
+        setFoodCals("");
+        setFoodProt("");
+        setFoodCarbs("");
+    }
+    function handleDeleteFood(id) {
+        const next = nutritionLog.filter(e => e.id !== id);
+        setNutritionLog(next);
+        ls_set(NUTRITION_KEY, next);
+    }
+    const progDayData = workoutDays[progDay];
+    const progEx = progDayData.exercises[progExIdx];
+    const progSessions = log
+        .filter(e => e.day === progDayData.day && e.exerciseName === progEx.name)
+        .slice(-3);
+    const coaching = getCoaching(log.filter(e => e.day === progDayData.day && e.exerciseName === progEx.name));
+    const inputStyle = {
+        background: "#060d14",
+        border: "1px solid #1e2a3a",
+        borderRadius: "8px",
+        color: "#e2e8f0",
+        fontFamily: "'Inter', sans-serif",
+        fontSize: "15px",
+        fontWeight: "600",
+        padding: "10px 12px",
+        width: "100%",
+        boxSizing: "border-box",
+        outline: "none",
+    };
+    const selectStyle = { ...inputStyle, cursor: "pointer", appearance: "none", WebkitAppearance: "none" };
+    const smallInput = { ...inputStyle, fontSize: "14px", padding: "9px 10px" };
+    const subViews = [
+        { key: "log", label: "Log Workout" },
+        { key: "progress", label: "Progress" },
+        { key: "bodyweight", label: "Body Weight" },
+        { key: "nutrition", label: "Nutrition" },
+    ];
+    return (React.createElement("div", null,
+        React.createElement("div", { style: {
+                display: "flex", gap: "4px", background: "#0a1118",
+                borderRadius: "10px", padding: "4px", border: "1px solid #1e2a3a",
+                marginBottom: "20px", flexWrap: "wrap",
+            } }, subViews.map(({ key, label }) => {
+            const active = view === key;
+            return (React.createElement("button", { key: key, onClick: () => setView(key), style: {
+                    flex: "1 1 auto", padding: "8px 6px", borderRadius: "7px", border: "none",
+                    background: active ? "linear-gradient(135deg, #1d4ed8, #3b82f6)" : "transparent",
+                    color: active ? "#fff" : "#6b7a8d",
+                    fontFamily: "'Inter', sans-serif", fontWeight: "700", fontSize: "11px",
+                    cursor: "pointer", transition: "all 0.2s", whiteSpace: "nowrap",
+                } }, label));
+        })),
+        view === "log" && (React.createElement("div", null,
+            React.createElement("div", { style: {
+                    background: "#0a1827", border: "1px solid #1e3a5f", borderRadius: "8px",
+                    padding: "9px 13px", marginBottom: "18px", display: "flex", alignItems: "center", gap: "8px",
+                } },
+                React.createElement("div", { style: { width: "6px", height: "6px", borderRadius: "50%", background: "#3b82f6", flexShrink: 0 } }),
+                React.createElement("div", { style: { color: "#4a7a9b", fontSize: "12px" } }, "Your entries auto-save as you type \u2014 nothing is lost until you hit Save Session.")),
+            React.createElement("div", { style: { marginBottom: "14px" } },
+                React.createElement("div", { style: { color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "8px" } }, "Workout Day"),
+                React.createElement("div", { style: { position: "relative" } },
+                    React.createElement("select", { value: selectedDay, onChange: e => setSelectedDay(+e.target.value), style: selectStyle }, workoutDays.map((w, i) => React.createElement("option", { key: i, value: i, style: { background: "#0a1118" } }, w.label))),
+                    React.createElement("div", { style: { position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)", color: "#3b82f6", pointerEvents: "none", fontSize: "12px" } }, "\u25BC"))),
+            React.createElement("div", { style: { marginBottom: "20px" } },
+                React.createElement("div", { style: { color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "8px" } }, "Exercise"),
+                React.createElement("div", { style: { position: "relative" } },
+                    React.createElement("select", { value: selectedExIdx, onChange: e => setSelectedExIdx(+e.target.value), style: selectStyle }, dayData.exercises.map((ex, i) => React.createElement("option", { key: i, value: i, style: { background: "#0a1118" } }, ex.name))),
+                    React.createElement("div", { style: { position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)", color: "#3b82f6", pointerEvents: "none", fontSize: "12px" } }, "\u25BC"))),
+            React.createElement("div", { style: { background: "#0a1118", border: "1px solid #1e2a3a", borderRadius: "10px", padding: "12px 14px", marginBottom: "20px" } },
+                React.createElement("div", { style: { color: "#93c5fd", fontWeight: "700", fontSize: "13px", marginBottom: "2px" } }, exercise.name),
+                React.createElement("div", { style: { color: "#4a7a9b", fontSize: "12px" } },
+                    exercise.muscles,
+                    " \u00B7 ",
+                    exercise.sets)),
+            React.createElement("div", { style: { marginBottom: "16px" } },
+                React.createElement("div", { style: { color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "12px" } }, "Sets"),
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "32px 1fr 1fr 32px", gap: "8px", marginBottom: "8px", padding: "0 2px" } },
+                    React.createElement("div", null),
+                    React.createElement("div", { style: { color: "#4a5a6a", fontSize: "11px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: "center" } }, "Weight (lbs)"),
+                    React.createElement("div", { style: { color: "#4a5a6a", fontSize: "11px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.06em", textAlign: "center" } }, "Reps"),
+                    React.createElement("div", null)),
+                sets.map((s, i) => (React.createElement("div", { key: i, style: { display: "grid", gridTemplateColumns: "32px 1fr 1fr 32px", gap: "8px", marginBottom: "8px", alignItems: "center" } },
+                    React.createElement("div", { style: { width: "28px", height: "28px", borderRadius: "50%", background: "#0a1118", border: "1px solid #1e2a3a", display: "flex", alignItems: "center", justifyContent: "center", color: "#3b82f6", fontWeight: "700", fontSize: "12px" } }, i + 1),
+                    React.createElement("input", { type: "number", inputMode: "decimal", placeholder: "e.g. 80", value: s.weight, onChange: e => updateSet(i, "weight", e.target.value), style: inputStyle }),
+                    React.createElement("input", { type: "number", inputMode: "numeric", placeholder: "12", value: s.reps, onChange: e => updateSet(i, "reps", e.target.value), style: inputStyle }),
+                    React.createElement("button", { onClick: () => removeSet(i), style: { width: "28px", height: "28px", borderRadius: "50%", background: "#0a1118", border: "1px solid #1e2a3a", color: "#6b7a8d", cursor: "pointer", fontSize: "14px", display: "flex", alignItems: "center", justifyContent: "center", padding: 0 } }, "\u00D7")))),
+                React.createElement("button", { onClick: addSet, style: { width: "100%", padding: "10px", borderRadius: "8px", background: "transparent", border: "1px dashed #1e2a3a", color: "#4a7a9b", fontFamily: "'Inter', sans-serif", fontSize: "13px", fontWeight: "600", cursor: "pointer", marginTop: "4px" } }, "+ Add Set")),
+            React.createElement("div", { style: { color: "#4a5a6a", fontSize: "12px", marginBottom: "14px", textAlign: "center" } },
+                "Logging for: ",
+                React.createElement("span", { style: { color: "#6b7a8d" } }, todayStr())),
+            React.createElement("button", { onClick: handleSave, style: {
+                    width: "100%", padding: "14px", borderRadius: "12px", border: "none",
+                    background: saved ? "linear-gradient(135deg, #166534, #15803d)" : "linear-gradient(135deg, #1d4ed8, #3b82f6)",
+                    color: "#fff", fontFamily: "'Inter', sans-serif", fontSize: "15px", fontWeight: "800", cursor: "pointer",
+                    boxShadow: saved ? "0 4px 16px #22c55e30" : "0 4px 16px #3b82f640", transition: "all 0.3s",
+                } }, saved ? "✓ Saved to History!" : "Save Session"),
+            log.length > 0 && (React.createElement("div", { style: { marginTop: "28px" } },
+                React.createElement("div", { style: { color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "14px" } }, "Recent Entries"),
+                [...log].reverse().slice(0, 8).map(entry => (React.createElement("div", { key: entry.id, style: { background: "#0a1118", border: "1px solid #1e2a3a", borderRadius: "10px", padding: "14px", marginBottom: "8px" } },
+                    React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" } },
+                        React.createElement("div", null,
+                            React.createElement("div", { style: { color: "#e2e8f0", fontWeight: "700", fontSize: "14px" } }, entry.exerciseName),
+                            React.createElement("div", { style: { color: "#4a7a9b", fontSize: "12px", marginTop: "2px" } },
+                                entry.day,
+                                " \u00B7 ",
+                                entry.date)),
+                        React.createElement("button", { onClick: () => handleDeleteEntry(entry.id), style: { background: "transparent", border: "none", color: "#4a5a6a", cursor: "pointer", fontSize: "14px", padding: "2px 6px" } }, "\u00D7")),
+                    React.createElement("div", { style: { display: "flex", gap: "6px", flexWrap: "wrap" } }, entry.sets.map((s, i) => (React.createElement("div", { key: i, style: { background: "#060d14", border: "1px solid #1e2a3a", borderRadius: "6px", padding: "5px 9px", color: "#93c5fd", fontSize: "12px", fontWeight: "600" } },
+                        "S",
+                        i + 1,
+                        ": ",
+                        s.weight,
+                        "lb \u00D7 ",
+                        s.reps))))))))))),
+        view === "progress" && (React.createElement("div", null,
+            React.createElement("div", { style: { color: "#6b7a8d", fontSize: "13px", marginBottom: "20px", lineHeight: "1.5" } }, "Pick an exercise to see your last sessions and exactly what to do next time."),
+            React.createElement("div", { style: { marginBottom: "14px" } },
+                React.createElement("div", { style: { color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "8px" } }, "Workout Day"),
+                React.createElement("div", { style: { position: "relative" } },
+                    React.createElement("select", { value: progDay, onChange: e => { setProgDay(+e.target.value); setProgExIdx(0); }, style: selectStyle }, workoutDays.map((w, i) => React.createElement("option", { key: i, value: i, style: { background: "#0a1118" } }, w.label))),
+                    React.createElement("div", { style: { position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)", color: "#3b82f6", pointerEvents: "none", fontSize: "12px" } }, "\u25BC"))),
+            React.createElement("div", { style: { marginBottom: "20px" } },
+                React.createElement("div", { style: { color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "8px" } }, "Exercise"),
+                React.createElement("div", { style: { position: "relative" } },
+                    React.createElement("select", { value: progExIdx, onChange: e => setProgExIdx(+e.target.value), style: selectStyle }, progDayData.exercises.map((ex, i) => React.createElement("option", { key: i, value: i, style: { background: "#0a1118" } }, ex.name))),
+                    React.createElement("div", { style: { position: "absolute", right: "12px", top: "50%", transform: "translateY(-50%)", color: "#3b82f6", pointerEvents: "none", fontSize: "12px" } }, "\u25BC"))),
+            progSessions.length === 0 ? (React.createElement("div", { style: { background: "#0f1923", border: "1px solid #1e2a3a", borderRadius: "14px", padding: "32px 20px", textAlign: "center" } },
+                React.createElement("div", { style: { fontSize: "32px", marginBottom: "12px" } }, "\uD83D\uDCCB"),
+                React.createElement("div", { style: { color: "#e2e8f0", fontWeight: "700", fontSize: "15px", marginBottom: "6px" } }, "No sessions logged yet"),
+                React.createElement("div", { style: { color: "#6b7a8d", fontSize: "13px" } }, "Log a session in the Log Workout tab and your progress will appear here."))) : (React.createElement("div", null,
+                React.createElement("div", { style: { color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "12px" } },
+                    "Last ",
+                    progSessions.length,
+                    " Session",
+                    progSessions.length > 1 ? "s" : ""),
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: `repeat(${progSessions.length}, 1fr)`, gap: "8px", marginBottom: "20px" } }, progSessions.map((session, si) => {
+                    const isLatest = si === progSessions.length - 1;
+                    const totalVol = session.sets.reduce((a, s) => a + s.weight * s.reps, 0);
+                    return (React.createElement("div", { key: session.id, style: {
+                            background: isLatest ? "linear-gradient(135deg, #0f1f3d, #0a1827)" : "#0a1118",
+                            border: isLatest ? "1px solid #3b82f650" : "1px solid #1e2a3a",
+                            borderRadius: "12px", padding: "14px 12px",
+                        } },
+                        React.createElement("div", { style: { color: isLatest ? "#93c5fd" : "#4a7a9b", fontSize: "10px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "8px" } }, isLatest ? "Latest" : `${progSessions.length - si} ago`),
+                        React.createElement("div", { style: { color: "#6b7a8d", fontSize: "10px", marginBottom: "8px" } }, session.date),
+                        session.sets.map((s, i) => (React.createElement("div", { key: i, style: { display: "flex", justifyContent: "space-between", marginBottom: "5px", alignItems: "center" } },
+                            React.createElement("div", { style: { color: "#4a5a6a", fontSize: "11px" } },
+                                "S",
+                                i + 1),
+                            React.createElement("div", { style: { color: isLatest ? "#e2e8f0" : "#6b7a8d", fontWeight: "700", fontSize: "13px" } },
+                                s.weight,
+                                React.createElement("span", { style: { color: "#4a5a6a", fontWeight: "400", fontSize: "10px" } }, " lb")),
+                            React.createElement("div", { style: { color: isLatest ? "#93c5fd" : "#4a7a9b", fontWeight: "700", fontSize: "13px" } },
+                                "\u00D7",
+                                s.reps)))),
+                        React.createElement("div", { style: { marginTop: "10px", paddingTop: "8px", borderTop: "1px solid #1e2a3a" } },
+                            React.createElement("div", { style: { color: "#4a5a6a", fontSize: "10px", textTransform: "uppercase", letterSpacing: "0.06em" } }, "Volume"),
+                            React.createElement("div", { style: { color: isLatest ? "#3b82f6" : "#4a7a9b", fontWeight: "700", fontSize: "13px" } },
+                                totalVol.toLocaleString(),
+                                " lb"))));
+                })),
+                coaching && (React.createElement("div", { style: { background: `${coaching.adviceColor}12`, border: `1px solid ${coaching.adviceColor}40`, borderRadius: "14px", padding: "18px", marginBottom: "16px" } },
+                    React.createElement("div", { style: { display: "flex", gap: "10px", alignItems: "flex-start" } },
+                        React.createElement("div", { style: { fontSize: "22px", flexShrink: 0 } }, coaching.adviceIcon),
+                        React.createElement("div", null,
+                            React.createElement("div", { style: { color: coaching.adviceColor, fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "6px" } }, "Next Session"),
+                            React.createElement("div", { style: { color: "#e2e8f0", fontWeight: "700", fontSize: "15px", lineHeight: "1.4" } }, coaching.advice))))),
+                (coaching === null || coaching === void 0 ? void 0 : coaching.stuck) && (React.createElement("div", { style: { background: "#2d1a0a", border: "1px solid #f59e0b50", borderRadius: "14px", padding: "16px 18px" } },
+                    React.createElement("div", { style: { color: "#f59e0b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "8px" } },
+                        "\u26A0\uFE0F Stuck at ",
+                        coaching.lastWeight,
+                        " lbs for 3+ sessions"),
+                    React.createElement("div", { style: { color: "#b0bec5", fontSize: "13px", lineHeight: "1.5" } },
+                        React.createElement("span", { style: { color: "#fbbf24", fontWeight: "700" } }, "Try this: "),
+                        coaching.stuckTip))))))),
+        view === "bodyweight" && (React.createElement("div", null,
+            React.createElement("div", { style: { color: "#6b7a8d", fontSize: "13px", marginBottom: "20px", lineHeight: "1.5" } }, "Log your bodyweight and set a goal to keep it in view."),
+            React.createElement("div", { style: { background: "#0f1923", border: "1px solid #1e3a5f", borderRadius: "14px", padding: "18px", marginBottom: "20px" } },
+                React.createElement("div", { style: { color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "12px" } }, "\uD83C\uDFAF Goal Weight"),
+                goalWeight && (React.createElement("div", { style: { background: "#0a1827", border: "1px solid #3b82f640", borderRadius: "10px", padding: "12px 16px", marginBottom: "14px", display: "flex", alignItems: "baseline", gap: "6px" } },
+                    React.createElement("span", { style: { color: "#3b82f6", fontSize: "28px", fontWeight: "900", letterSpacing: "-0.03em" } }, goalWeight),
+                    React.createElement("span", { style: { color: "#4a7a9b", fontSize: "14px", fontWeight: "600" } }, "lbs"),
+                    bwLog.length > 0 && (() => {
+                        const latest = bwLog[bwLog.length - 1].weight;
+                        const diff = (latest - parseFloat(goalWeight)).toFixed(1);
+                        const isAbove = parseFloat(diff) > 0;
+                        return (React.createElement("span", { style: { marginLeft: "auto", color: isAbove ? "#f59e0b" : "#22c55e", fontSize: "13px", fontWeight: "700" } }, isAbove ? `${diff} lbs to go` : "✓ Goal reached!"));
+                    })())),
+                React.createElement("div", { style: { display: "flex", gap: "8px" } },
+                    React.createElement("input", { type: "number", inputMode: "decimal", placeholder: "Enter goal weight (lbs)", value: goalInput, onChange: e => setGoalInput(e.target.value), onKeyDown: e => e.key === "Enter" && handleSaveGoal(), style: { ...smallInput, flex: 1 } }),
+                    React.createElement("button", { onClick: handleSaveGoal, style: { padding: "9px 16px", borderRadius: "8px", border: "none", background: goalSaved ? "linear-gradient(135deg, #166534, #15803d)" : "linear-gradient(135deg, #1d4ed8, #3b82f6)", color: "#fff", fontFamily: "'Inter', sans-serif", fontWeight: "700", fontSize: "13px", cursor: "pointer", whiteSpace: "nowrap" } }, goalSaved ? "✓ Saved" : "Set Goal"))),
+            React.createElement("div", { style: { marginBottom: "20px" } },
+                React.createElement("div", { style: { color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "10px" } }, "Log Today's Weight"),
+                React.createElement("div", { style: { display: "flex", gap: "8px" } },
+                    React.createElement("input", { type: "number", inputMode: "decimal", placeholder: "e.g. 165", value: bwInput, onChange: e => setBwInput(e.target.value), onKeyDown: e => e.key === "Enter" && handleLogWeight(), style: { ...smallInput, flex: 1 } }),
+                    React.createElement("button", { onClick: handleLogWeight, style: { padding: "9px 16px", borderRadius: "8px", border: "none", background: "linear-gradient(135deg, #1d4ed8, #3b82f6)", color: "#fff", fontFamily: "'Inter', sans-serif", fontWeight: "700", fontSize: "13px", cursor: "pointer" } }, "Log")),
+                React.createElement("div", { style: { color: "#4a5a6a", fontSize: "11px", marginTop: "6px" } },
+                    "Date: ",
+                    todayStr())),
+            bwLog.length > 0 ? (React.createElement("div", null,
+                React.createElement("div", { style: { color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "12px" } }, "History"),
+                [...bwLog].reverse().map((entry, i) => {
+                    const origIdx = bwLog.length - 1 - i;
+                    const prev = origIdx > 0 ? bwLog[origIdx - 1] : null;
+                    const delta = prev ? (entry.weight - prev.weight).toFixed(1) : null;
+                    const isDown = delta !== null && parseFloat(delta) < 0;
+                    const isUp = delta !== null && parseFloat(delta) > 0;
+                    return (React.createElement("div", { key: entry.id, style: { background: "#0a1118", border: "1px solid #1e2a3a", borderRadius: "10px", padding: "12px 14px", marginBottom: "8px", display: "flex", alignItems: "center", justifyContent: "space-between" } },
+                        React.createElement("div", null,
+                            React.createElement("div", { style: { color: "#e2e8f0", fontWeight: "800", fontSize: "20px", letterSpacing: "-0.02em" } },
+                                entry.weight,
+                                " ",
+                                React.createElement("span", { style: { fontSize: "13px", fontWeight: "500", color: "#4a7a9b" } }, "lbs")),
+                            React.createElement("div", { style: { color: "#4a5a6a", fontSize: "12px", marginTop: "2px" } }, entry.date)),
+                        React.createElement("div", { style: { display: "flex", alignItems: "center", gap: "10px" } },
+                            delta !== null && (React.createElement("div", { style: { color: isDown ? "#22c55e" : isUp ? "#f87171" : "#6b7a8d", fontWeight: "700", fontSize: "14px" } },
+                                isDown ? "▼" : isUp ? "▲" : "–",
+                                " ",
+                                Math.abs(parseFloat(delta)),
+                                " lbs")),
+                            React.createElement("button", { onClick: () => handleDeleteBw(entry.id), style: { background: "transparent", border: "none", color: "#4a5a6a", cursor: "pointer", fontSize: "14px", padding: "2px 6px" } }, "\u00D7"))));
+                }))) : (React.createElement("div", { style: { background: "#0f1923", border: "1px solid #1e2a3a", borderRadius: "12px", padding: "28px 20px", textAlign: "center" } },
+                React.createElement("div", { style: { fontSize: "28px", marginBottom: "10px" } }, "\u2696\uFE0F"),
+                React.createElement("div", { style: { color: "#6b7a8d", fontSize: "13px" } }, "No entries yet. Log your first weigh-in above."))))),
+        view === "nutrition" && (React.createElement("div", null,
+            React.createElement("div", { style: { background: "linear-gradient(135deg, #0a1827, #0f1923)", border: "1px solid #1e3a5f", borderRadius: "14px", padding: "18px", marginBottom: "20px" } },
+                React.createElement("div", { style: { color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "14px" } },
+                    "Today's Totals \u2014 ",
+                    todayStr()),
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px" } }, [["Calories", totalCals, "kcal", "#f59e0b"], ["Protein", totalProt, "g", "#22c55e"], ["Carbs", totalCarbs, "g", "#3b82f6"]].map(([label, val, unit, color]) => (React.createElement("div", { key: label, style: { background: "#060d14", borderRadius: "10px", padding: "12px 10px", border: `1px solid ${color}30`, textAlign: "center" } },
+                    React.createElement("div", { style: { color, fontSize: "22px", fontWeight: "900", letterSpacing: "-0.02em" } }, val),
+                    React.createElement("div", { style: { color: "#4a5a6a", fontSize: "10px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.06em" } }, unit),
+                    React.createElement("div", { style: { color: "#4a7a9b", fontSize: "10px", marginTop: "2px" } }, label)))))),
+            React.createElement("div", { style: { background: "#0f1923", border: "1px solid #1e2a3a", borderRadius: "14px", padding: "18px", marginBottom: "20px" } },
+                React.createElement("div", { style: { color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: "14px" } }, "+ Log Food"),
+                React.createElement("div", { style: { marginBottom: "10px" } },
+                    React.createElement("input", { type: "text", placeholder: "Food name (e.g. Grilled Chicken)", value: foodName, onChange: e => setFoodName(e.target.value), onKeyDown: e => e.key === "Enter" && handleAddFood(), style: smallInput })),
+                React.createElement("div", { style: { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "8px", marginBottom: "14px" } },
+                    React.createElement("div", null,
+                        React.createElement("div", { style: { color: "#4a5a6a", fontSize: "10px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "5px" } }, "Calories"),
+                        React.createElement("input", { type: "number", inputMode: "numeric", placeholder: "kcal", value: foodCals, onChange: e => setFoodCals(e.target.value), style: smallInput })),
+                    React.createElement("div", null,
+                        React.createElement("div", { style: { color: "#4a5a6a", fontSize: "10px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "5px" } }, "Protein (g)"),
+                        React.createElement("input", { type: "number", inputMode: "numeric", placeholder: "g", value: foodProt, onChange: e => setFoodProt(e.target.value), style: smallInput })),
+                    React.createElement("div", null,
+                        React.createElement("div", { style: { color: "#4a5a6a", fontSize: "10px", fontWeight: "600", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: "5px" } }, "Carbs (g)"),
+                        React.createElement("input", { type: "number", inputMode: "numeric", placeholder: "g", value: foodCarbs, onChange: e => setFoodCarbs(e.target.value), style: smallInput }))),
+                React.createElement("button", { onClick: handleAddFood, style: { width: "100%", padding: "12px", borderRadius: "10px", border: "none", background: "linear-gradient(135deg, #1d4ed8, #3b82f6)", color: "#fff", fontFamily: "'Inter', sans-serif", fontWeight: "800", fontSize: "14px", cursor: "pointer" } }, "Add Food")),
+            todayNutrition.length > 0 && (React.createElement("div", { style: { marginBottom: "20px" } },
+                React.createElement("div", { style: { color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "12px" } }, "Today's Log"),
+                [...todayNutrition].reverse().map(entry => (React.createElement("div", { key: entry.id, style: { background: "#0a1118", border: "1px solid #1e2a3a", borderRadius: "10px", padding: "12px 14px", marginBottom: "8px" } },
+                    React.createElement("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "8px" } },
+                        React.createElement("div", { style: { color: "#e2e8f0", fontWeight: "700", fontSize: "14px" } }, entry.name),
+                        React.createElement("button", { onClick: () => handleDeleteFood(entry.id), style: { background: "transparent", border: "none", color: "#4a5a6a", cursor: "pointer", fontSize: "14px", padding: "2px 6px" } }, "\u00D7")),
+                    React.createElement("div", { style: { display: "flex", gap: "8px" } }, [[entry.cals, "Cals", "#f59e0b"], [`${entry.prot}g`, "Protein", "#22c55e"], [`${entry.carbs}g`, "Carbs", "#3b82f6"]].map(([v, l, c]) => (React.createElement("div", { key: l, style: { background: "#060d14", border: `1px solid ${c}25`, borderRadius: "6px", padding: "4px 9px" } },
+                        React.createElement("span", { style: { color: c, fontWeight: "700", fontSize: "12px" } }, v),
+                        React.createElement("span", { style: { color: "#4a5a6a", fontSize: "11px" } },
+                            " ",
+                            l)))))))))),
+            nutritionLog.filter(e => e.date !== todayStr()).length > 0 && (() => {
+                const pastDates = [...new Set(nutritionLog.filter(e => e.date !== todayStr()).map(e => e.date))].slice(-5).reverse();
+                return (React.createElement("div", null,
+                    React.createElement("div", { style: { color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "12px" } }, "Previous Days"),
+                    pastDates.map(date => {
+                        const de = nutritionLog.filter(e => e.date === date);
+                        const dC = de.reduce((a, e) => a + e.cals, 0);
+                        const dP = de.reduce((a, e) => a + e.prot, 0);
+                        const dCb = de.reduce((a, e) => a + e.carbs, 0);
+                        return (React.createElement("div", { key: date, style: { background: "#0a1118", border: "1px solid #1e2a3a", borderRadius: "10px", padding: "12px 14px", marginBottom: "8px" } },
+                            React.createElement("div", { style: { color: "#6b7a8d", fontSize: "12px", fontWeight: "600", marginBottom: "8px" } },
+                                date,
+                                " \u00B7 ",
+                                de.length,
+                                " items"),
+                            React.createElement("div", { style: { display: "flex", gap: "8px" } }, [[dC, "Cals", "#f59e0b"], [`${dP}g`, "Protein", "#22c55e"], [`${dCb}g`, "Carbs", "#3b82f6"]].map(([v, l, c]) => (React.createElement("div", { key: l, style: { background: "#060d14", border: `1px solid ${c}25`, borderRadius: "6px", padding: "4px 9px" } },
+                                React.createElement("span", { style: { color: c, fontWeight: "700", fontSize: "12px" } }, v),
+                                React.createElement("span", { style: { color: "#4a5a6a", fontSize: "11px" } },
+                                    " ",
+                                    l)))))));
+                    })));
+            })(),
+            nutritionLog.length === 0 && (React.createElement("div", { style: { background: "#0f1923", border: "1px solid #1e2a3a", borderRadius: "12px", padding: "28px 20px", textAlign: "center" } },
+                React.createElement("div", { style: { fontSize: "28px", marginBottom: "10px" } }, "\uD83E\uDD57"),
+                React.createElement("div", { style: { color: "#6b7a8d", fontSize: "13px" } }, "No food logged yet. Add your first entry above.")))))));
+}
+// ─── MAIN APP ─────────────────────────────────────────────────────────────────
+function GymGuide() {
+    const [activeTab, setActiveTab] = useState(0);
+    const [selectedPhase, setSelectedPhase] = useState(0);
+    const tabs = ["Workout Plan", "Progression", "Tips", "Tracker"];
+    return (React.createElement("div", { style: {
+            minHeight: "100vh",
+            background: "#060d14",
+            color: "#e2e8f0",
+            fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif",
+            maxWidth: "540px",
+            margin: "0 auto",
+            padding: "0 0 60px",
+        } },
+        React.createElement("div", { style: {
+                background: "linear-gradient(180deg, #0a1827 0%, #060d14 100%)",
+                padding: "32px 20px 24px",
+                borderBottom: "1px solid #1e2a3a",
+                position: "sticky",
+                top: 0,
+                zIndex: 10,
+            } },
+            React.createElement("div", { style: { marginBottom: "4px" } },
+                React.createElement("span", { style: {
+                        background: "linear-gradient(90deg, #3b82f6, #1d4ed8)",
+                        WebkitBackgroundClip: "text",
+                        WebkitTextFillColor: "transparent",
+                        fontSize: "11px",
+                        fontWeight: "800",
+                        letterSpacing: "0.15em",
+                        textTransform: "uppercase",
+                    } }, "Planet Fitness \u00B7 5-Day Split")),
+            React.createElement("h1", { style: {
+                    fontSize: "26px",
+                    fontWeight: "900",
+                    letterSpacing: "-0.04em",
+                    margin: "0 0 20px",
+                    lineHeight: 1.1,
+                    color: "#f0f6ff",
+                } }, "Your Gym Guide"),
+            React.createElement("div", { style: {
+                    display: "flex",
+                    gap: "4px",
+                    background: "#0a1118",
+                    borderRadius: "12px",
+                    padding: "4px",
+                    border: "1px solid #1e2a3a",
+                } }, tabs.map((tab, i) => (React.createElement("button", { key: i, onClick: () => setActiveTab(i), style: {
+                    flex: 1,
+                    padding: "9px 4px",
+                    borderRadius: "9px",
+                    border: "none",
+                    background: activeTab === i ? "linear-gradient(135deg, #1d4ed8, #3b82f6)" : "transparent",
+                    color: activeTab === i ? "#fff" : "#6b7a8d",
+                    fontFamily: "'Inter', sans-serif",
+                    fontWeight: activeTab === i ? "700" : "500",
+                    fontSize: "11px",
+                    cursor: "pointer",
+                    transition: "all 0.2s",
+                    boxShadow: activeTab === i ? "0 2px 8px #3b82f640" : "none",
+                } }, tab))))),
+        React.createElement("div", { style: { padding: "20px" } },
+            activeTab === 0 && (React.createElement("div", null,
+                React.createElement("div", { style: { marginBottom: "20px" } },
+                    React.createElement("div", { style: { color: "#6b7a8d", fontSize: "13px", lineHeight: "1.5" } }, "Tap a day to see your exercises. Tap any exercise to expand form cues and tips.")),
+                workoutDays.map((w, i) => (React.createElement(DayCard, { key: i, workout: w }))))),
+            activeTab === 1 && (React.createElement("div", null,
+                React.createElement("div", { style: { marginBottom: "20px" } },
+                    React.createElement("div", { style: { color: "#6b7a8d", fontSize: "13px", lineHeight: "1.5" } }, "An 8-week roadmap to build strength, intensity, and muscle. Select a phase below.")),
+                React.createElement(WeekSelector, { selected: selectedPhase, onSelect: setSelectedPhase }),
+                React.createElement(PhaseCard, { phase: phases[selectedPhase] }),
+                React.createElement("div", { style: {
+                        background: "#0f1923",
+                        border: "1px solid #1e2a3a",
+                        borderRadius: "14px",
+                        padding: "20px",
+                        marginBottom: "16px",
+                    } },
+                    React.createElement("div", { style: { color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "14px" } }, "What to focus on this phase"),
+                    selectedPhase === 0 && (React.createElement("div", null, ["Log every workout. Note the machine, weight, and how it felt.", "Don't chase soreness — soreness ≠ growth. Chase good form.", "Ask a staff member to help you set up each machine correctly.", "Aim to feel each muscle working, not just moving the weight.", "End every session with 5 min of stretching the muscles you trained."].map((t, i) => (React.createElement("div", { key: i, style: { display: "flex", gap: "10px", marginBottom: "10px" } },
+                        React.createElement("div", { style: { color: "#3b82f6", fontWeight: "700", fontSize: "13px", flexShrink: 0 } },
+                            "0",
+                            i + 1),
+                        React.createElement("div", { style: { color: "#b0bec5", fontSize: "13px", lineHeight: "1.5" } }, t)))))),
+                    selectedPhase === 1 && (React.createElement("div", null, ["Add one set to every exercise compared to Weeks 1–2.", "Increase weight by 5 lbs on machines where Week 1–2 felt manageable.", "Start a simple log: exercise, weight, reps. Review it before every session.", "Begin timing your rest periods. 75 seconds goes faster than you think.", "Your form should now feel automatic on your main lifts. Start pushing harder."].map((t, i) => (React.createElement("div", { key: i, style: { display: "flex", gap: "10px", marginBottom: "10px" } },
+                        React.createElement("div", { style: { color: "#2563eb", fontWeight: "700", fontSize: "13px", flexShrink: 0 } },
+                            "0",
+                            i + 1),
+                        React.createElement("div", { style: { color: "#b0bec5", fontSize: "13px", lineHeight: "1.5" } }, t)))))),
+                    selectedPhase === 2 && (React.createElement("div", null, ["Your last 2 reps of every set should feel genuinely hard.", "Increase weight on any exercise that felt too easy in Week 3–4.", "Shorten rest to 60 sec — this builds muscular endurance alongside size.", "Add a mind-muscle connection focus: slow down the eccentric (lowering) phase.", "Cardio intensity goes up too — increase treadmill speed or stair pace."].map((t, i) => (React.createElement("div", { key: i, style: { display: "flex", gap: "10px", marginBottom: "10px" } },
+                        React.createElement("div", { style: { color: "#1d4ed8", fontWeight: "700", fontSize: "13px", flexShrink: 0 } },
+                            "0",
+                            i + 1),
+                        React.createElement("div", { style: { color: "#b0bec5", fontSize: "13px", lineHeight: "1.5" } }, t)))))),
+                    selectedPhase === 3 && (React.createElement("div", null, ["Drop sets: on your last exercise each day, do your working weight × 10, then immediately drop 20–30% and do 8 more. No rest.", "This is peak week. Push. You've built the foundation — now use it.", "Take progress photos on Day 56. Compare to Day 1.", "Plan your Week 9 program — start the cycle again with heavier baseline weights.", "Celebrate the consistency. Most people don't make it 8 weeks."].map((t, i) => (React.createElement("div", { key: i, style: { display: "flex", gap: "10px", marginBottom: "10px" } },
+                        React.createElement("div", { style: { color: "#1e40af", fontWeight: "700", fontSize: "13px", flexShrink: 0 } },
+                            "0",
+                            i + 1),
+                        React.createElement("div", { style: { color: "#b0bec5", fontSize: "13px", lineHeight: "1.5" } }, t))))))),
+                React.createElement("div", { style: {
+                        background: "#0f1923",
+                        border: "1px solid #1e2a3a",
+                        borderRadius: "14px",
+                        padding: "20px",
+                    } },
+                    React.createElement("div", { style: { color: "#4a7a9b", fontSize: "11px", fontWeight: "700", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: "16px" } }, "8-Week Progress Arc"),
+                    React.createElement("div", { style: { display: "flex", gap: "6px", alignItems: "flex-end", height: "60px" } }, [40, 50, 60, 65, 72, 78, 84, 90].map((h, i) => (React.createElement("div", { key: i, style: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" } },
+                        React.createElement("div", { style: {
+                                width: "100%",
+                                height: `${h * 0.6}px`,
+                                borderRadius: "4px 4px 2px 2px",
+                                background: i < (selectedPhase + 1) * 2
+                                    ? `linear-gradient(180deg, #3b82f6, #1d4ed8)`
+                                    : "#1e2a3a",
+                                transition: "background 0.3s",
+                            } }),
+                        React.createElement("div", { style: { color: "#4a5a6a", fontSize: "9px" } },
+                            "W",
+                            i + 1))))),
+                    React.createElement("div", { style: { marginTop: "12px", color: "#6b7a8d", fontSize: "12px" } }, "Estimated training intensity over 8 weeks")))),
+            activeTab === 2 && (React.createElement("div", null,
+                React.createElement("div", { style: { marginBottom: "20px" } },
+                    React.createElement("div", { style: { color: "#6b7a8d", fontSize: "13px", lineHeight: "1.5" } }, "The habits that separate lifters who transform from those who plateau. Tap each one.")),
+                React.createElement("div", { style: {
+                        background: "linear-gradient(135deg, #1d4ed820, #3b82f615)",
+                        border: "1px solid #3b82f630",
+                        borderRadius: "14px",
+                        padding: "18px",
+                        marginBottom: "20px",
+                        display: "flex",
+                        gap: "12px",
+                        alignItems: "flex-start",
+                    } },
+                    React.createElement("div", { style: { fontSize: "28px" } }, "\uD83C\uDFAF"),
+                    React.createElement("div", null,
+                        React.createElement("div", { style: { color: "#93c5fd", fontWeight: "800", fontSize: "15px", marginBottom: "4px" } }, "The Real Secret"),
+                        React.createElement("div", { style: { color: "#94a3b8", fontSize: "13px", lineHeight: "1.5" } }, "The gym is 30% of the equation. Sleep, protein, and consistency are the other 70%. Master those and the results are unavoidable."))),
+                tips.map((tip, i) => (React.createElement(TipCard, { key: i, tip: tip }))),
+                React.createElement("div", { style: {
+                        marginTop: "24px",
+                        padding: "20px",
+                        background: "linear-gradient(135deg, #0a1827, #0f1923)",
+                        border: "1px solid #1e2a3a",
+                        borderRadius: "14px",
+                        textAlign: "center",
+                    } },
+                    React.createElement("div", { style: { fontSize: "24px", marginBottom: "10px" } }, "\uD83D\uDCAA"),
+                    React.createElement("div", { style: { color: "#e2e8f0", fontWeight: "800", fontSize: "16px", marginBottom: "6px" } }, "You started at 15."),
+                    React.createElement("div", { style: { color: "#6b7a8d", fontSize: "13px", lineHeight: "1.6" } }, "Most people wish they'd started younger. You're already ahead. Now just don't stop.")))),
+            activeTab === 3 && React.createElement(TrackerTab, null))));
+}
 const root = ReactDOM.createRoot(document.getElementById("root"));
-root.render(<GymGuide />);
+root.render(React.createElement(GymGuide, null));
+
 </script>
 </body>
 </html>
