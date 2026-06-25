@@ -731,41 +731,55 @@ function getCoaching(sessions) {
 }
 // ─── AI MACRO LOOKUP ─────────────────────────────────────────────────────────
 async function lookupMacros(query) {
-    // USDA FoodData Central — free, no registration needed for DEMO_KEY (30 req/hr)
-    // Foundation + SR Legacy data types give generic whole foods (eggs, chicken, oats)
-    // instead of random branded products. Nutrients are per 100g.
-    const q = encodeURIComponent(query);
-    const url = `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=DEMO_KEY&query=${q}&dataType=Foundation&dataType=SR%20Legacy&pageSize=5&sortBy=score&sortOrder=desc`;
+    // USDA FoodData Central — POST to /foods/search with JSON body (required by the API)
+    // dataType filters to Foundation + SR Legacy = generic whole foods, no branded junk
+    // Nutrient numbers per USDA spec: 208=kcal, 203=protein, 205=carbs, 204=fat
+    // All values are per 100g
+    const API_KEY = "v9n0fgvLlhHDNj752TASz3LxW6YtrfarO36cMVA5";
+    const response = await fetch(
+        `https://api.nal.usda.gov/fdc/v1/foods/search?api_key=${API_KEY}`,
+        {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                query: query,
+                dataType: ["Foundation", "SR Legacy"],
+                pageSize: 5,
+                sortBy: "dataType.keyword",
+                sortOrder: "asc",
+            }),
+        }
+    );
 
-    const response = await fetch(url);
     if (!response.ok) {
-        const errText = await response.text().catch(() => "");
-        throw new Error(`USDA lookup failed (${response.status})${errText ? ": " + errText.slice(0, 100) : ""}`);
+        throw new Error(`USDA API error (${response.status})`);
     }
+
     const data = await response.json();
     const foods = (data.foods || []).filter(f => f.foodNutrients && f.foodNutrients.length > 0);
+
     if (!foods.length) {
-        throw new Error("No results — try a simpler term like \"eggs\" or \"chicken breast\"");
+        throw new Error(`No results for "${query}" — try simpler terms like "eggs" or "chicken breast"`);
     }
 
-    // Pick first result with calorie data (nutrientId 208 = kcal)
-    function getNutrient(nutrients, id) {
-        const n = nutrients.find(x => x.nutrientId === id);
-        return n ? Math.round((n.value || 0) * 10) / 10 : 0;
+    // Nutrient lookup — search results use AbridgedFoodNutrient with field "number" (integer)
+    function getNutrient(nutrients, num) {
+        const n = nutrients.find(x => x.number === num || x.nutrientNumber === num);
+        return n ? (n.amount || n.value || 0) : 0;
     }
 
+    // Pick first result that has calorie data
     const food = foods.find(f => getNutrient(f.foodNutrients, 208) > 0) || foods[0];
     const n = food.foodNutrients;
 
     return {
-        name: food.description,
-        cals: Math.round(getNutrient(n, 208)),   // Energy kcal — values are per 100g
-        prot: getNutrient(n, 203),                // Protein
-        carbs: getNutrient(n, 205),               // Carbohydrates
-        fat: getNutrient(n, 204),                 // Total fat
+        name:  food.description,
+        cals:  Math.round(getNutrient(n, 208)),
+        prot:  Math.round(getNutrient(n, 203) * 10) / 10,
+        carbs: Math.round(getNutrient(n, 205) * 10) / 10,
+        fat:   Math.round(getNutrient(n, 204) * 10) / 10,
     };
 }
-
 // ─── SHARED UI BITS ──────────────────────────────────────────────────────────
 function WeekSelector({ selected, onSelect }) {
     return (React.createElement("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap", marginBottom: "24px" } }, phases.map((p, i) => (React.createElement("button", { key: i, onClick: () => onSelect(i), style: {
