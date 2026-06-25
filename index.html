@@ -787,12 +787,8 @@ async function lookupMacros(query) {
     const carbs = Math.round(getNutrient(food.foodNutrients, 205) * 10) / 10;
     const fat   = Math.round(getNutrient(food.foodNutrients, 204) * 10) / 10;
 
-    // If all zeros, throw debug info so we can see what fields exist
-    if (cals === 0 && prot === 0 && carbs === 0 && fat === 0) {
-        throw new Error(`DEBUG — raw nutrient fields: ${debugKeys}`);
-    }
-
-    return { name: food.description, cals, prot, carbs, fat };
+    // Always throw debug so we can see raw fields — remove once confirmed working
+    throw new Error(`v1.5 DEBUG | cals=${cals} prot=${prot} | first nutrient: ${debugKeys} | total nutrients: ${food.foodNutrients.length}`);
 }
 function PhaseCard({ phase }) {
     return (React.createElement("div", { style: {
@@ -1652,7 +1648,7 @@ function GymGuide() {
                     padding: "2px 7px",
                     letterSpacing: "0.05em",
                     flexShrink: 0,
-                } }, "v1.4")
+                } }, "v1.5")
             ),
             React.createElement("div", { style: {
                     display: "flex",
